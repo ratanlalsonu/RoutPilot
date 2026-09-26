@@ -113,6 +113,7 @@ fun LiveMapScreen(
     externalOsrmGeometry: List<Pair<Double, Double>> = emptyList(),
     currentVehicleNodeId: String,
     isDarkTheme: Boolean,
+    isAdminMode: Boolean = false,
     onRequestLocationPermission: () -> Unit,
     onNavigateToHazardDetail: () -> Unit,
     onNavigateToRoutePlanner: () -> Unit,
@@ -145,7 +146,7 @@ fun LiveMapScreen(
                 .testTag("live_interactive_map")
         )
 
-        // 2. Compact Floating Top Optimal Path & Hazard Pill (Does not shrink or block the map)
+        // 2. Compact Floating Top Route & Safety Pill
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
@@ -164,17 +165,25 @@ fun LiveMapScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    val distText = activeRoute?.let { "${it.estimatedTimeMin.toInt()} mins (${it.distanceKm} km)" } ?: "24 mins (14.9 km)"
                     Text(
-                        text = "Optimal Path: ${activeRoute?.nodePath?.joinToString(" → ") ?: "A → E → H → P → M → T"}",
-                        fontSize = 12.sp,
+                        text = if (isAdminMode) {
+                            "Optimal Path: ${activeRoute?.nodePath?.joinToString(" → ") ?: "A → E → H → P → M → T"}"
+                        } else {
+                            "Safe Route • $distText"
+                        },
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = RpPrimaryBlue,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    val distText = activeRoute?.let { "${it.distanceKm} km • ${it.estimatedTimeMin.toInt()} min" } ?: "14.9 km • 24 min"
                     Text(
-                        text = "$distText • Tap hazard/bridge pin on map for details",
+                        text = if (isAdminMode) {
+                            "$distText • Tap hazard/bridge pin on map for details"
+                        } else {
+                            "Avoiding closed Bridge B1 • Tap red pin for alert"
+                        },
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -191,7 +200,12 @@ fun LiveMapScreen(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.testTag("map_hazard_route_options_button")
                 ) {
-                    Text("Hazard & Routes", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (isAdminMode) "Hazard & Routes" else "Road Alert",
+                        fontSize = 10.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -258,6 +272,7 @@ fun RoutePlannerScreen(
     placeSearchResults: List<PlaceSearchResult>,
     isSearchingPlaces: Boolean,
     selectedCustomPlace: PlaceSearchResult?,
+    isAdminMode: Boolean = false,
     onSelectSource: (String) -> Unit,
     onSelectDestination: (String) -> Unit,
     onSelectVehicle: (VehicleType) -> Unit,
@@ -286,32 +301,33 @@ fun RoutePlannerScreen(
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Quick Sub-navigation Row for Routes Section (Planner / A* vs Dijkstra / Journey)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = onNavigateToComparison,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("nav_to_comparison_button")
+        if (isAdminMode) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Default.CompareArrows, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("A* vs Dijkstra", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-            OutlinedButton(
-                onClick = onNavigateToJourney,
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag("nav_to_journey_button")
-            ) {
-                Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Journey Live", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                OutlinedButton(
+                    onClick = onNavigateToComparison,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("nav_to_comparison_button")
+                ) {
+                    Icon(Icons.Default.CompareArrows, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("A* vs Dijkstra", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = onNavigateToJourney,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("nav_to_journey_button")
+                ) {
+                    Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Journey Live", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -557,35 +573,36 @@ fun RoutePlannerScreen(
                     )
                 }
 
-                // Algorithm Selector matching Reference Image (A* vs Dijkstra)
-                Text(
-                    text = "Algorithm",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                if (isAdminMode) {
+                    Text(
+                        text = "Algorithm",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    AlgorithmPill(
-                        algorithm = RoutingAlgorithm.ASTAR,
-                        selected = selectedAlgorithm == RoutingAlgorithm.ASTAR,
-                        onClick = { onSelectAlgorithm(RoutingAlgorithm.ASTAR) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("algo_select_astar")
-                    )
-                    AlgorithmPill(
-                        algorithm = RoutingAlgorithm.DIJKSTRA,
-                        selected = selectedAlgorithm == RoutingAlgorithm.DIJKSTRA,
-                        onClick = { onSelectAlgorithm(RoutingAlgorithm.DIJKSTRA) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("algo_select_dijkstra")
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        AlgorithmPill(
+                            algorithm = RoutingAlgorithm.ASTAR,
+                            selected = selectedAlgorithm == RoutingAlgorithm.ASTAR,
+                            onClick = { onSelectAlgorithm(RoutingAlgorithm.ASTAR) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("algo_select_astar")
+                        )
+                        AlgorithmPill(
+                            algorithm = RoutingAlgorithm.DIJKSTRA,
+                            selected = selectedAlgorithm == RoutingAlgorithm.DIJKSTRA,
+                            onClick = { onSelectAlgorithm(RoutingAlgorithm.DIJKSTRA) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("algo_select_dijkstra")
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -600,7 +617,7 @@ fun RoutePlannerScreen(
                         .testTag("calculate_route_button")
                 ) {
                     Text(
-                        text = "Calculate Route",
+                        text = if (isAdminMode) "Calculate Route" else "Find Best Safe Route",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -609,13 +626,28 @@ fun RoutePlannerScreen(
             }
         }
 
-        // Selectable Optimal Paths Card (Tap any path to inspect its Real-Time Source->Destination Telemetry Graph)
-        val availableRoutes = remember(initialOptimalRoute, safeOptimalRoute1, safeOptimalRoute2) {
+        val availableRoutes = remember(initialOptimalRoute, safeOptimalRoute1, safeOptimalRoute2, isAdminMode) {
             listOfNotNull(
-                initialOptimalRoute?.let { Triple("Initial Shortest Optimal Path", "Direct Corridor (Has Bridge/Road Work)", it) },
-                safeOptimalRoute1?.let { Triple("Optimal Safe Path 1 (A*)", "Avoids Bridge B1 & Construction", it) },
+                safeOptimalRoute1?.let {
+                    Triple(
+                        if (isAdminMode) "Optimal Safe Path 1 (A*)" else "Best Safe Route (Recommended)",
+                        "Avoids closed Bridge B1 & road work",
+                        it
+                    )
+                },
                 safeOptimalRoute2?.takeIf { it.nodePath != safeOptimalRoute1?.nodePath }?.let {
-                    Triple("Optimal Safe Path 2 (Bypass)", "Secondary River Causeway Route", it)
+                    Triple(
+                        if (isAdminMode) "Optimal Safe Path 2 (Bypass)" else "Alternate Safe Route 2",
+                        "Secondary safe river bypass road",
+                        it
+                    )
+                },
+                initialOptimalRoute?.let {
+                    Triple(
+                        if (isAdminMode) "Initial Shortest Path (Unobstructed)" else "Direct Route (Bridge Closed Ahead)",
+                        "Has Bridge B1 closure & road work",
+                        it
+                    )
                 }
             ).distinctBy { it.third.nodePath }
         }
@@ -632,13 +664,21 @@ fun RoutePlannerScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Available Optimal Paths ($sourceNodeId → $destinationNodeId)",
+                        text = if (isAdminMode) {
+                            "Available Optimal Paths ($sourceNodeId → $destinationNodeId)"
+                        } else {
+                            "Choose Your Route"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Select any optimal path below to view its real-time Source → Destination telemetry graph with Bridge & Road Construction indicators:",
+                        text = if (isAdminMode) {
+                            "Select any optimal path below to view its real-time Source → Destination telemetry graph with Bridge & Road Construction indicators:"
+                        } else {
+                            "Tap a route below to select it for your trip:"
+                        },
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -685,21 +725,24 @@ fun RoutePlannerScreen(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = title,
-                                            fontSize = 12.sp,
+                                            fontSize = 13.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = if (isSelected) RpPrimaryBlue else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
+                                    if (isAdminMode) {
+                                        Text(
+                                            text = routeOption.nodePath.joinToString(" → "),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                     Text(
-                                        text = routeOption.nodePath.joinToString(" → "),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "$subtitle • ${routeOption.distanceKm} km • ${routeOption.estimatedTimeMin.toInt()} min",
-                                        fontSize = 11.sp,
+                                        text = "${routeOption.estimatedTimeMin.toInt()} mins (${routeOption.distanceKm} km) • $subtitle",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -708,7 +751,7 @@ fun RoutePlannerScreen(
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
                                     Text(
-                                        text = if (hasHazardOnPath) "HAZARD ON PATH" else "SAFE ROUTE",
+                                        text = if (hasHazardOnPath) "CLOSED BRIDGE" else "SAFE ROAD",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = if (hasHazardOnPath) Color(0xFFB45309) else RpSafeGreen,
@@ -722,8 +765,7 @@ fun RoutePlannerScreen(
             }
         }
 
-        // REAL-TIME SOURCE -> DESTINATION TELEMETRY GRAPH CARD (Showing Bridges & Road Construction in Real Time!)
-        if (activeRoute != null) {
+        if (isAdminMode && activeRoute != null) {
             SourceToDestinationTelemetryGraphCard(
                 route = activeRoute,
                 edges = edges,
@@ -733,7 +775,7 @@ fun RoutePlannerScreen(
             )
         }
 
-        // Route Information Card matching Reference Image
+        // Route Information Card
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -745,7 +787,7 @@ fun RoutePlannerScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Route Information",
+                    text = if (isAdminMode) "Route Information" else "Trip Summary",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -765,41 +807,42 @@ fun RoutePlannerScreen(
                         value = "${activeRoute?.estimatedTimeMin?.toInt() ?: 32} min",
                         modifier = Modifier.weight(1f)
                     )
-                    RouteMetricBox(
-                        label = "Total Cost",
-                        value = "${activeRoute?.totalCost ?: 52.3}",
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (isAdminMode) {
+                        RouteMetricBox(
+                            label = "Total Cost",
+                            value = "${activeRoute?.totalCost ?: 52.3}",
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        RouteMetricBox(
+                            label = "Safety",
+                            value = "100% Safe",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
 
                 if (activeRoute != null) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "Optimal Path (${activeRoute.algorithm.displayName}): ${activeRoute.nodePath.joinToString(" → ")}",
+                            text = if (isAdminMode) {
+                                "Optimal Path (${activeRoute.algorithm.displayName}): ${activeRoute.nodePath.joinToString(" → ")}"
+                            } else {
+                                "Selected Way: ${activeRoute.nodePath.joinToString(" → ")}"
+                            },
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = RpPrimaryBlue
                         )
                         Text(
-                            text = "Route Provider: ${externalOsrmRoute?.providerName ?: activeRoute.providerName}",
+                            text = "Closed Bridges & Hazards Avoided: ${activeRoute.hazardsAvoided + activeRoute.blockedRoadsAvoided}",
                             fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Traffic Availability: ${if (activeRoute.trafficAvailable) "LIVE TRAFFIC" else "TRAFFIC DATA UNAVAILABLE"}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Hazards Avoided: ${activeRoute.hazardsAvoided} • Blocked/Restricted Avoided: ${activeRoute.blockedRoadsAvoided}",
-                            fontSize = 12.sp,
-                            color = if (activeRoute.hazardsAvoided > 0) RpSafeGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = RpSafeGreen,
                             fontWeight = FontWeight.SemiBold
                         )
                         if (selectedVehicle == VehicleType.VAN) {
                             Text(
-                                text = "Van Restriction Applied: Narrow/Weight-restricted links (<3.5t or <3.0m) excluded.",
+                                text = "Heavy Vehicle / Van Safe Road Selected",
                                 fontSize = 11.sp,
                                 color = RpCriticalOrange,
                                 fontWeight = FontWeight.Medium
@@ -825,8 +868,8 @@ fun RoutePlannerScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Choose Optimal Path & Start Moving →",
-                        fontSize = 14.sp,
+                        text = "Start Navigation →",
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White
                     )

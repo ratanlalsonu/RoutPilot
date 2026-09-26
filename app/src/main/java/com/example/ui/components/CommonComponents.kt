@@ -22,18 +22,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -65,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.AlgorithmRouteResult
+import com.example.model.AppRole
 import com.example.model.AppScreen
 import com.example.model.DataSource
 import com.example.model.DiversionAlertState
@@ -90,8 +96,10 @@ fun RoutPilotTopBar(
     title: String,
     isHome: Boolean,
     activeHazardCount: Int,
+    activeRole: AppRole = AppRole.USER_PANEL,
     isDarkTheme: Boolean = false,
     onToggleTheme: () -> Unit = {},
+    onToggleRoleClick: () -> Unit = {},
     onMenuOrBackClick: () -> Unit,
     onBellClick: () -> Unit
 ) {
@@ -150,15 +158,50 @@ fun RoutPilotTopBar(
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                // Show "Exit Admin" pill ONLY when inside Admin Panel; normal users never see a mode/role badge
+                if (activeRole == AppRole.ADMIN_PANEL) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = RpPurpleAccent.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, RpPurpleAccent),
+                        modifier = Modifier
+                            .clickable { onToggleRoleClick() }
+                            .testTag("topbar_role_switch_pill")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AdminPanelSettings,
+                                contentDescription = "Exit Admin Panel",
+                                tint = RpPurpleAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Exit Admin",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = RpPurpleAccent
+                            )
+                        }
+                    }
+                }
+
                 IconButton(
                     onClick = onToggleTheme,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .testTag("topbar_theme_toggle")
                 ) {
                     Icon(
@@ -554,6 +597,7 @@ fun ModeSwitchConfirmDialog(
 @Composable
 fun AutomaticDiversionBanner(
     diversion: DiversionAlertState,
+    isAdminMode: Boolean = false,
     onViewMapClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -561,7 +605,8 @@ fun AutomaticDiversionBanner(
         Card(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .clickable { onViewMapClick() },
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = RpCriticalOrangeBg),
             border = BorderStroke(1.5.dp, RpCriticalOrange)
@@ -581,34 +626,36 @@ fun AutomaticDiversionBanner(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = diversion.stage,
+                            text = if (isAdminMode) diversion.stage else "SAFE REROUTE ACTIVE",
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 13.sp,
                             color = RpBlockedRed
                         )
                     }
-                    Surface(
-                        color = if (diversion.dataSource == DataSource.LIVE_HARDWARE) RpSafeGreenBg else RpPurpleBg,
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = if (diversion.dataSource == DataSource.LIVE_HARDWARE) "LIVE EVENT" else "VIRTUAL TEST EVENT",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (diversion.dataSource == DataSource.LIVE_HARDWARE) RpSafeGreen else RpPurpleAccent,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    if (isAdminMode) {
+                        Surface(
+                            color = if (diversion.dataSource == DataSource.LIVE_HARDWARE) RpSafeGreenBg else RpPurpleBg,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = if (diversion.dataSource == DataSource.LIVE_HARDWARE) "LIVE EVENT" else "VIRTUAL TEST EVENT",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (diversion.dataSource == DataSource.LIVE_HARDWARE) RpSafeGreen else RpPurpleAccent,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Affected: ${diversion.affectedRoad} • ${diversion.reason}",
+                    text = "Closed Ahead: ${diversion.affectedRoad}",
                     fontSize = 12.sp,
                     color = Color(0xFF1E293B),
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "New Route: ${diversion.alternatePathLabel} (${diversion.newDistanceKm} km • ${diversion.newTimeMin} min)",
+                    text = "Safe Route: ${diversion.newTimeMin} mins • ${diversion.newDistanceKm} km",
                     fontSize = 12.sp,
                     color = RpPrimaryBlue,
                     fontWeight = FontWeight.Bold
@@ -643,15 +690,29 @@ fun SeverityStatusBadge(severity: HazardSeverity) {
 @Composable
 fun RoutPilotBottomNavBar(
     currentScreen: AppScreen,
+    activeRole: AppRole = AppRole.USER_PANEL,
     onNavigate: (AppScreen) -> Unit
 ) {
-    val items = listOf(
-        Triple("Home", Icons.Default.Home, AppScreen.HOME),
-        Triple("Map", Icons.Default.Map, AppScreen.LIVE_MAP),
-        Triple("Sensors", Icons.Default.Sensors, AppScreen.SENSORS),
-        Triple("Routes", Icons.Default.AltRoute, AppScreen.ROUTE_PLANNER),
-        Triple("More", Icons.Default.MoreHoriz, AppScreen.TEST_SCENARIOS)
-    )
+    val isAdmin = activeRole == AppRole.ADMIN_PANEL
+    val items = if (isAdmin) {
+        listOf(
+            Triple("Admin", Icons.Default.AdminPanelSettings, AppScreen.ADMIN_DASHBOARD),
+            Triple("Sensors", Icons.Default.Sensors, AppScreen.SENSORS),
+            Triple("A* Lab", Icons.Default.CompareArrows, AppScreen.ALGORITHM_COMPARISON),
+            Triple("Scenarios", Icons.Default.MoreHoriz, AppScreen.TEST_SCENARIOS),
+            Triple("Config", Icons.Default.Settings, AppScreen.SETTINGS)
+        )
+    } else {
+        listOf(
+            Triple("Home", Icons.Default.Home, AppScreen.HOME),
+            Triple("Map", Icons.Default.Map, AppScreen.LIVE_MAP),
+            Triple("Routes", Icons.Default.AltRoute, AppScreen.ROUTE_PLANNER),
+            Triple("Navigate", Icons.Default.Navigation, AppScreen.JOURNEY_TRACKING),
+            Triple("Settings", Icons.Default.Settings, AppScreen.SETTINGS)
+        )
+    }
+
+    val activeAccent = if (isAdmin) RpPurpleAccent else RpPrimaryBlue
 
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -661,23 +722,7 @@ fun RoutPilotBottomNavBar(
             .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
         items.forEach { (label, icon, targetScreen) ->
-            val selected = when (targetScreen) {
-                AppScreen.HOME -> currentScreen == AppScreen.HOME
-                AppScreen.LIVE_MAP -> currentScreen == AppScreen.LIVE_MAP
-                AppScreen.SENSORS -> currentScreen == AppScreen.SENSORS || currentScreen == AppScreen.HAZARD_DETECTION
-                AppScreen.ROUTE_PLANNER -> currentScreen in setOf(
-                    AppScreen.ROUTE_PLANNER,
-                    AppScreen.ALGORITHM_COMPARISON,
-                    AppScreen.JOURNEY_TRACKING
-                )
-                else -> currentScreen in setOf(
-                    AppScreen.TEST_SCENARIOS,
-                    AppScreen.SETTINGS,
-                    AppScreen.HISTORY,
-                    AppScreen.CONNECTIVITY,
-                    AppScreen.DATA_SOURCES
-                )
-            }
+            val selected = currentScreen == targetScreen
 
             NavigationBarItem(
                 selected = selected,
@@ -696,9 +741,9 @@ fun RoutPilotBottomNavBar(
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = RpPrimaryBlue,
-                    selectedTextColor = RpPrimaryBlue,
-                    indicatorColor = RpPrimaryBlue.copy(alpha = 0.14f),
+                    selectedIconColor = activeAccent,
+                    selectedTextColor = activeAccent,
+                    indicatorColor = activeAccent.copy(alpha = 0.14f),
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
@@ -781,6 +826,7 @@ fun RouteSwitchedConfirmationBanner(
 @Composable
 fun HazardRouteNotificationModal(
     state: HazardRouteNotificationState,
+    isAdminMode: Boolean = false,
     onSelectSafeRoute: (AlgorithmRouteResult) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -806,7 +852,7 @@ fun HazardRouteNotificationModal(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 1. APK Notification Header
+                // 1. Alert Header
                 Surface(
                     color = RpBlockedRed,
                     shape = RoundedCornerShape(12.dp),
@@ -819,21 +865,21 @@ fun HazardRouteNotificationModal(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = "Hazard Notification",
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Road Alert",
                             tint = Color.White,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "APK HAZARD NOTIFICATION",
+                                text = if (isAdminMode) "APK HAZARD NOTIFICATION" else "ROAD SAFETY ALERT",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White.copy(alpha = 0.9f)
                             )
                             Text(
-                                text = state.notificationTitle,
+                                text = if (isAdminMode) state.notificationTitle else "Bridge Closed Ahead — Safe Route Ready",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White
@@ -842,7 +888,7 @@ fun HazardRouteNotificationModal(
                     }
                 }
 
-                // 2. Exact Location, Bridge/Road Category, and Hazard Type Card
+                // 2. Location & Reason Card
                 Surface(
                     color = RpBlockedRedBg,
                     shape = RoundedCornerShape(12.dp),
@@ -859,7 +905,7 @@ fun HazardRouteNotificationModal(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = state.infrastructureType,
+                                text = if (isAdminMode) state.infrastructureType else "CLOSED FOR SAFETY",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = RpBlockedRed
@@ -873,30 +919,39 @@ fun HazardRouteNotificationModal(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF0F172A)
                         )
-                        Text(
-                            text = "GPS Coordinates: ${state.coordinatesLabel}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF475569)
-                        )
-                        Text(
-                            text = "Hazard Type: ${state.hazardTypeSummary}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF7F1D1D)
-                        )
-                        Text(
-                            text = "Your Current Path (Affected): ${state.affectedChosenPathLabel}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = RpBlockedRed
-                        )
+                        if (isAdminMode) {
+                            Text(
+                                text = "GPS Coordinates: ${state.coordinatesLabel}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF475569)
+                            )
+                            Text(
+                                text = "Hazard Type: ${state.hazardTypeSummary}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF7F1D1D)
+                            )
+                            Text(
+                                text = "Your Current Path (Affected): ${state.affectedChosenPathLabel}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = RpBlockedRed
+                            )
+                        } else {
+                            Text(
+                                text = "This bridge/road is unsafe right now. Please take the safe bypass road below.",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF7F1D1D)
+                            )
+                        }
                     }
                 }
 
-                // 3. Choose Other Optimal Safe Route Options
+                // 3. Safe Route Options
                 Text(
-                    text = "Choose Other Optimal Safe Route:",
+                    text = if (isAdminMode) "Choose Other Optimal Safe Route:" else "Select Safe Bypass Road:",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -919,7 +974,11 @@ fun HazardRouteNotificationModal(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Option 1: Recommended Optimal Safe Route (${safe1.algorithm.displayName})",
+                                    text = if (isAdminMode) {
+                                        "Option 1: Recommended Optimal Safe Route (${safe1.algorithm.displayName})"
+                                    } else {
+                                        "Best Safe Route (Recommended)"
+                                    },
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF065F46),
@@ -930,7 +989,7 @@ fun HazardRouteNotificationModal(
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
                                     Text(
-                                        text = "SAFE • 0 HAZARDS",
+                                        text = "100% SAFE",
                                         color = Color.White,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.ExtraBold,
@@ -938,18 +997,27 @@ fun HazardRouteNotificationModal(
                                     )
                                 }
                             }
-                            Text(
-                                text = "Path: ${safe1.nodePath.joinToString(" → ")}",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF0F172A)
-                            )
-                            Text(
-                                text = "Distance: ${safe1.distanceKm} km • Est. Time: ${safe1.estimatedTimeMin.toInt()} min • Cost: ${safe1.totalCost}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF334155)
-                            )
+                            if (isAdminMode) {
+                                Text(
+                                    text = "Path: ${safe1.nodePath.joinToString(" → ")}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    text = "Distance: ${safe1.distanceKm} km • Est. Time: ${safe1.estimatedTimeMin.toInt()} min • Cost: ${safe1.totalCost}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF334155)
+                                )
+                            } else {
+                                Text(
+                                    text = "${safe1.estimatedTimeMin.toInt()} mins (${safe1.distanceKm} km) • Avoids Closed Bridge",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF0F172A)
+                                )
+                            }
                             Button(
                                 onClick = { onSelectSafeRoute(safe1) },
                                 colors = ButtonDefaults.buttonColors(containerColor = RpSafeGreen),
@@ -962,7 +1030,7 @@ fun HazardRouteNotificationModal(
                                 Icon(Icons.Default.AltRoute, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Choose This Optimal Safe Route →",
+                                    text = if (isAdminMode) "Choose This Optimal Safe Route →" else "Take Safe Route →",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White
@@ -984,22 +1052,31 @@ fun HazardRouteNotificationModal(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "Option 2: Alternate Safe Route (Bypass Corridor)",
+                                text = "Alternate Safe Route 2",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = RpPrimaryBlue
                             )
-                            Text(
-                                text = "Path: ${safe2.nodePath.joinToString(" → ")}",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Distance: ${safe2.distanceKm} km • Est. Time: ${safe2.estimatedTimeMin.toInt()} min • Cost: ${safe2.totalCost}",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (isAdminMode) {
+                                Text(
+                                    text = "Path: ${safe2.nodePath.joinToString(" → ")}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Distance: ${safe2.distanceKm} km • Est. Time: ${safe2.estimatedTimeMin.toInt()} min • Cost: ${safe2.totalCost}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text(
+                                    text = "${safe2.estimatedTimeMin.toInt()} mins (${safe2.distanceKm} km) • Safe Bypass Road",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                             Button(
                                 onClick = { onSelectSafeRoute(safe2) },
                                 colors = ButtonDefaults.buttonColors(containerColor = RpPrimaryBlue),
@@ -1010,7 +1087,7 @@ fun HazardRouteNotificationModal(
                                     .testTag("select_safe_optimal_route_2_button")
                             ) {
                                 Text(
-                                    text = "Choose Alternate Safe Route 2 →",
+                                    text = "Take Alternate Route 2 →",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -1025,7 +1102,7 @@ fun HazardRouteNotificationModal(
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Keep Current View / Dismiss", fontSize = 12.sp)
+                    Text("Close", fontSize = 12.sp)
                 }
             }
         }

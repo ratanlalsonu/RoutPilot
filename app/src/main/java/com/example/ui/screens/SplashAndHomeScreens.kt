@@ -107,6 +107,7 @@ fun SplashScreen(
     isDarkTheme: Boolean = false,
     onToggleTheme: (Boolean) -> Unit = {},
     onGetStarted: () -> Unit,
+    onAdminPortalClick: () -> Unit = {},
     onSkip: () -> Unit
 ) {
     // On subsequent APK launches (after the first time Get Started was tapped),
@@ -240,7 +241,6 @@ fun SplashScreen(
                 Spacer(modifier = Modifier.height(26.dp))
 
                 if (isFirstLaunch) {
-                    // Show "Get Started ->" ONLY on the very first launch after APK installation
                     Button(
                         onClick = onGetStarted,
                         shape = RoundedCornerShape(28.dp),
@@ -264,7 +264,6 @@ fun SplashScreen(
                         )
                     }
                 } else {
-                    // Subsequent launches: no "Get Started" button, preserves exact layout spacing
                     Spacer(modifier = Modifier.height(54.dp))
                 }
             }
@@ -449,25 +448,31 @@ fun HomeDashboardScreen(
     activeRoute: AlgorithmRouteResult?,
     gpsState: GpsTelemetry,
     isDarkTheme: Boolean = false,
+    emergencyBroadcast: String? = null,
+    onQuickSelectDestination: (String) -> Unit = {},
+    onOpenCitizenReport: () -> Unit = {},
+    onOpenAdminPanel: () -> Unit = {},
     onNavigate: (AppScreen) -> Unit,
     onRequestModeSwitch: (SensorMode) -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val nowFormatted = SimpleDateFormat("dd MMM yyyy\nhh:mm a", Locale.US).format(Date())
-
-    // Dynamic counters computed from actual live application state / Room database
-    val totalNodesCount = nodes.size.takeIf { it > 0 } ?: 20
-    val totalLinksCount = edges.size.takeIf { it > 0 } ?: 28
-    val activeHazardsCount = if (sensorMode == SensorMode.VIRTUAL && activeHazards.isEmpty() &&
-        edges.any { it.status == RoadStatusType.BLOCKED }
-    ) {
-        3
-    } else {
-        activeHazards.size
-    }
     val safeRoadsCount = edges.count { it.status == RoadStatusType.OPEN }
-    val restrictedRoadsCount = edges.count { it.status == RoadStatusType.RESTRICTED }
-    val blockedRoadsCount = edges.count { it.status == RoadStatusType.BLOCKED }
+    val slowRoadsCount = edges.count {
+        it.status == RoadStatusType.WARNING || it.status == RoadStatusType.RESTRICTED
+    }
+    val closedRoadsCount = edges.count { it.status == RoadStatusType.BLOCKED }
+
+    val startName = nodes.firstOrNull { it.id == (activeRoute?.nodePath?.firstOrNull() ?: "A") }?.name
+        ?.substringAfter(" - ")
+        ?: "College Gate (My Location)"
+    val currentDestId = activeRoute?.nodePath?.lastOrNull() ?: "T"
+    val endName = nodes.firstOrNull { it.id == currentDestId }?.name
+        ?.substringAfter(" - ")
+        ?: "City Hospital"
+    val distKm = activeRoute?.distanceKm ?: 14.5
+    val timeMin = activeRoute?.estimatedTimeMin?.toInt() ?: 21
+
+    val closedOrSlowEdges = edges.filter { it.status != RoadStatusType.OPEN }
 
     Column(
         modifier = Modifier
@@ -476,475 +481,485 @@ fun HomeDashboardScreen(
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Top Status Section matching Light Mode vs Dark Mode Reference Image
-        if (isDarkTheme) {
-            // Dark Mode: 3 side-by-side status pills (System Online | Sensors Running | Mode Simulation)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DarkHomeStatusPill(
-                    title = "System",
-                    value = "Online",
-                    dotColor = Color(0xFF10B981),
-                    valueColor = Color(0xFF10B981),
-                    onClick = { onNavigate(AppScreen.CONNECTIVITY) },
-                    modifier = Modifier.weight(1f)
-                )
-                DarkHomeStatusPill(
-                    title = "Sensors",
-                    value = if (sensorMode == SensorMode.EXTERNAL_HARDWARE) {
-                        if (esp32State == HardwareConnectionState.CONNECTED) "Live" else "Offline"
-                    } else {
-                        "Running"
-                    },
-                    dotColor = Color(0xFF38BDF8),
-                    valueColor = Color(0xFF38BDF8),
-                    onClick = { onNavigate(AppScreen.SENSORS) },
-                    modifier = Modifier.weight(1f)
-                )
-                DarkHomeStatusPill(
-                    title = "Mode",
-                    value = if (sensorMode == SensorMode.EXTERNAL_HARDWARE) "Hardware" else "Simulation",
-                    dotColor = Color(0xFFA855F7),
-                    valueColor = Color(0xFFA855F7),
-                    onClick = {
-                        val target = if (sensorMode == SensorMode.VIRTUAL) SensorMode.EXTERNAL_HARDWARE else SensorMode.VIRTUAL
-                        onRequestModeSwitch(target)
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        } else {
-            // Light Mode: Single sleek System Online + Date/Time Card matching Reference Image
+        // 1. Live Traffic Safety Advisory Banner (Simple, clear warning for drivers)
+        if (!emergencyBroadcast.isNullOrBlank()) {
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDarkTheme) Color(0xFF3B1219) else RpBlockedRedBg
+                ),
+                border = BorderStroke(1.5.dp, RpBlockedRed),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        val target = if (sensorMode == SensorMode.VIRTUAL) SensorMode.EXTERNAL_HARDWARE else SensorMode.VIRTUAL
-                        onRequestModeSwitch(target)
-                    }
+                    .clickable { onNavigate(AppScreen.LIVE_MAP) }
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (sensorMode == SensorMode.EXTERNAL_HARDWARE && esp32State != HardwareConnectionState.CONNECTED) {
-                                        RpBlockedRed
-                                    } else {
-                                        Color(0xFF16A34A)
-                                    }
-                                )
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = if (sensorMode == SensorMode.EXTERNAL_HARDWARE && esp32State != HardwareConnectionState.CONNECTED) {
-                                "ESP32 Disconnected"
-                            } else {
-                                "System Online"
-                            },
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (sensorMode == SensorMode.EXTERNAL_HARDWARE && esp32State != HardwareConnectionState.CONNECTED) {
-                                RpBlockedRed
-                            } else {
-                                Color(0xFF15803D)
-                            }
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(RpBlockedRed),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Road Alert",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "⚠️ Bridge B1 Closed Ahead",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkTheme) Color(0xFFFCA5A5) else RpBlockedRed
+                        )
+                        Text(
+                            text = "Safe alternate road is automatically selected for your trip.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDarkTheme) Color(0xFFFECACA) else Color(0xFF7F1D1D)
+                        )
+                    }
+                }
+            }
+        }
 
+        // 2. Google Maps-Style Main Navigation Card ("Where to?")
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.5.dp, RpPrimaryBlue.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Where to?",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Safe route avoiding closed bridges",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                        color = RpSafeGreenBg,
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, RpSafeGreen)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.CalendarToday,
+                                imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(13.dp)
+                                tint = RpSafeGreen,
+                                modifier = Modifier.size(15.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = nowFormatted,
-                                fontSize = 10.sp,
-                                lineHeight = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.End
+                                text = "100% SAFE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = RpSafeGreen
                             )
+                        }
+                    }
+                }
+
+                // 1-Tap Quick Destination Buttons (Like Google Maps shortcuts — zero typing needed!)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val quickPlaces = listOf(
+                        Triple("🏥 Hospital", "T", currentDestId == "T"),
+                        Triple("🚉 Station", "N", currentDestId == "N"),
+                        Triple("🛍️ Market", "I", currentDestId == "I"),
+                        Triple("🎓 College", "A", currentDestId == "A")
+                    )
+                    quickPlaces.forEach { (label, nodeId, isSelected) ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) RpPrimaryBlue else MaterialTheme.colorScheme.surfaceVariant,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) RpPrimaryBlue else MaterialTheme.colorScheme.outline
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onQuickSelectDestination(nodeId) }
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Start -> Destination Box (Tap to search or change location)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigate(AppScreen.ROUTE_PLANNER) }
+                        .testTag("quick_action_plan_route")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(RpPrimaryBlue)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "From (Your Location)",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = startName,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = "Change",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = RpPrimaryBlue
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                        )
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(RpSafeGreen)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "To (Destination)",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = endName,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = "Search Place",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = RpPrimaryBlue
+                            )
+                        }
+                    }
+                }
+
+                // Big Travel Time & Distance Summary
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = RpSafeGreen.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, RpSafeGreen.copy(alpha = 0.4f)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "$timeMin mins",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = RpSafeGreen
+                            )
+                            Text(
+                                text = "Travel Time",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = RpPrimaryBlue.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, RpPrimaryBlue.copy(alpha = 0.4f)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "$distKm km",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = RpPrimaryBlue
+                            )
+                            Text(
+                                text = "Distance",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Primary Action Buttons: Start Go & View Live Map
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = { onNavigate(AppScreen.JOURNEY_TRACKING) },
+                        colors = ButtonDefaults.buttonColors(containerColor = RpSafeGreen),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .height(50.dp)
+                            .testTag("start_navigation_home_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Navigation,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Start",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+
+                    Button(
+                        onClick = { onNavigate(AppScreen.LIVE_MAP) },
+                        colors = ButtonDefaults.buttonColors(containerColor = RpPrimaryBlue),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .testTag("quick_action_live_map")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Map,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "View Map",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Simple 3-Box Road Condition Summary (Easy to understand for any driver)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            DashboardStatCard(
+                title = "Open Roads",
+                value = safeRoadsCount.toString(),
+                icon = Icons.Default.CheckCircle,
+                iconBg = RpSafeGreenBg,
+                iconTint = RpSafeGreen,
+                valueColor = RpSafeGreen,
+                onClick = { onNavigate(AppScreen.LIVE_MAP) },
+                modifier = Modifier.weight(1f)
+            )
+            DashboardStatCard(
+                title = "Road Work",
+                value = slowRoadsCount.toString(),
+                icon = Icons.Default.Construction,
+                iconBg = RpWarningYellowBg,
+                iconTint = Color(0xFFD97706),
+                valueColor = Color(0xFFD97706),
+                onClick = { onNavigate(AppScreen.LIVE_MAP) },
+                modifier = Modifier.weight(1f)
+            )
+            DashboardStatCard(
+                title = "Closed Bridge",
+                value = closedRoadsCount.toString(),
+                icon = Icons.Default.Block,
+                iconBg = RpBlockedRedBg,
+                iconTint = RpBlockedRed,
+                valueColor = RpBlockedRed,
+                onClick = { onNavigate(AppScreen.HAZARD_DETECTION) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // 4. Live Road & Bridge Warnings Nearby (Plain, easy-to-read cards)
+        if (closedOrSlowEdges.isNotEmpty()) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Road & Bridge Status Ahead",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    closedOrSlowEdges.take(3).forEach { edge ->
+                        val isClosed = edge.status == RoadStatusType.BLOCKED
+                        val badgeColor = if (isClosed) RpBlockedRed else RpCriticalOrange
+                        val statusText = if (isClosed) "CLOSED" else "ROAD WORK"
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onNavigate(AppScreen.LIVE_MAP) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${if (edge.isBridge) "🌉 Bridge:" else "🛣️ Road:"} ${edge.roadName}",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (isClosed) {
+                                            "Closed for safety. Safe bypass road is selected."
+                                        } else {
+                                            "Slow traffic / road work ahead."
+                                        },
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    color = badgeColor,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = statusText,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 2. Dynamic 6 Metric Cards matching Light Mode (2x3) and Dark Mode (3x2) Reference Layouts
-        if (isDarkTheme) {
-            // Dark Mode: 3 columns x 2 rows matching Dark Mode Reference Image
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DarkMetricCard(
-                    title = "Total Nodes",
-                    value = totalNodesCount.toString(),
-                    valueColor = Color.White,
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-                DarkMetricCard(
-                    title = "Total Links",
-                    value = totalLinksCount.toString(),
-                    valueColor = Color.White,
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-                DarkMetricCard(
-                    title = "Active Hazards",
-                    value = activeHazardsCount.toString(),
-                    valueColor = Color.White,
-                    leadingIcon = Icons.Default.Warning,
-                    leadingIconTint = RpBlockedRed,
-                    onClick = { onNavigate(AppScreen.HAZARD_DETECTION) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DarkMetricCard(
-                    title = "Safe Roads",
-                    value = safeRoadsCount.toString(),
-                    valueColor = Color(0xFF10B981),
-                    showGreenUnderline = true,
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-                DarkMetricCard(
-                    title = "Restricted",
-                    value = restrictedRoadsCount.toString(),
-                    valueColor = Color.White,
-                    leadingIcon = Icons.Default.Construction,
-                    leadingIconTint = Color(0xFFF59E0B),
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-                DarkMetricCard(
-                    title = "Blocked",
-                    value = blockedRoadsCount.toString(),
-                    valueColor = Color.White,
-                    leadingIcon = Icons.Default.Block,
-                    leadingIconTint = RpBlockedRed,
-                    onClick = { onNavigate(AppScreen.HAZARD_DETECTION) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        } else {
-            // Light Mode: 2 columns x 3 rows matching Light Mode Reference Image
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                DashboardStatCard(
-                    title = "Total Nodes",
-                    value = totalNodesCount.toString(),
-                    icon = Icons.Default.Security,
-                    iconBg = Color(0xFFDCEBFF),
-                    iconTint = RpPrimaryBlue,
-                    valueColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-                DashboardStatCard(
-                    title = "Total Links",
-                    value = totalLinksCount.toString(),
-                    icon = Icons.Default.Link,
-                    iconBg = Color(0xFFDCEBFF),
-                    iconTint = RpPrimaryBlue,
-                    valueColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                DashboardStatCard(
-                    title = "Active Hazards",
-                    value = activeHazardsCount.toString(),
-                    icon = Icons.Default.Warning,
-                    iconBg = RpBlockedRedBg,
-                    iconTint = RpBlockedRed,
-                    valueColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { onNavigate(AppScreen.HAZARD_DETECTION) },
-                    modifier = Modifier.weight(1f)
-                )
-                DashboardStatCard(
-                    title = "Safe Roads",
-                    value = safeRoadsCount.toString(),
-                    icon = Icons.Default.CheckCircle,
-                    iconBg = RpSafeGreenBg,
-                    iconTint = RpSafeGreen,
-                    valueColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                DashboardStatCard(
-                    title = "Restricted",
-                    value = restrictedRoadsCount.toString(),
-                    icon = Icons.Default.Construction,
-                    iconBg = RpWarningYellowBg,
-                    iconTint = Color(0xFFD97706),
-                    valueColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier.weight(1f)
-                )
-                DashboardStatCard(
-                    title = "Blocked",
-                    value = blockedRoadsCount.toString(),
-                    icon = Icons.Default.Block,
-                    iconBg = RpBlockedRedBg,
-                    iconTint = RpBlockedRed,
-                    valueColor = MaterialTheme.colorScheme.onSurface,
-                    onClick = { onNavigate(AppScreen.HAZARD_DETECTION) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        // 3. Quick Actions Header & 6 Tiles (Directly below Metric Cards matching Reference Image!)
-        Text(
-            text = "Quick Actions",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(top = 2.dp)
-        )
-
-        if (isDarkTheme) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                DarkQuickActionTile(
-                    label = "Plan Route",
-                    icon = Icons.AutoMirrored.Filled.AltRoute,
-                    iconTint = Color(0xFF818CF8),
-                    iconBg = Color(0xFF1E293B),
-                    onClick = { onNavigate(AppScreen.ROUTE_PLANNER) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_plan_route")
-                )
-                DarkQuickActionTile(
-                    label = "Live Map",
-                    icon = Icons.Default.Map,
-                    iconTint = Color(0xFF2DD4BF),
-                    iconBg = Color(0xFF132F38),
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_live_map")
-                )
-                DarkQuickActionTile(
-                    label = "Sensors",
-                    icon = Icons.Default.Sensors,
-                    iconTint = Color(0xFF38BDF8),
-                    iconBg = Color(0xFF152C4A),
-                    onClick = { onNavigate(AppScreen.SENSORS) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_sensors")
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                DarkQuickActionTile(
-                    label = "Demo Mode",
-                    icon = Icons.Default.PlayCircleFilled,
-                    iconTint = Color(0xFFEF4444),
-                    iconBg = Color(0xFF3B1822),
-                    onClick = { onNavigate(AppScreen.TEST_SCENARIOS) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_test_mode")
-                )
-                DarkQuickActionTile(
-                    label = "History",
-                    icon = Icons.Default.History,
-                    iconTint = Color(0xFFA855F7),
-                    iconBg = Color(0xFF281C40),
-                    onClick = { onNavigate(AppScreen.HISTORY) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_history")
-                )
-                DarkQuickActionTile(
-                    label = "Settings",
-                    icon = Icons.Default.Settings,
-                    iconTint = Color(0xFF94A3B8),
-                    iconBg = Color(0xFF1E293B),
-                    onClick = { onNavigate(AppScreen.SETTINGS) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_settings")
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                QuickActionTile(
-                    label = "Plan Route",
-                    icon = Icons.AutoMirrored.Filled.AltRoute,
-                    containerColor = Color(0xFF4A90E2),
-                    contentColor = Color.White,
-                    iconTint = Color(0xFF1E3A8A),
-                    iconCircleColor = Color.White.copy(alpha = 0.30f),
-                    onClick = { onNavigate(AppScreen.ROUTE_PLANNER) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_plan_route")
-                )
-                QuickActionTile(
-                    label = "Live Map",
-                    icon = Icons.Default.Map,
-                    containerColor = Color(0xFF6EE7B7),
-                    contentColor = Color(0xFF064E3B),
-                    iconTint = Color(0xFF065F46),
-                    iconCircleColor = Color.White.copy(alpha = 0.45f),
-                    onClick = { onNavigate(AppScreen.LIVE_MAP) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_live_map")
-                )
-                QuickActionTile(
-                    label = "Sensors",
-                    icon = Icons.Default.Sensors,
-                    containerColor = Color(0xFFFED7AA),
-                    contentColor = Color(0xFF7C2D12),
-                    iconTint = Color(0xFFEA580C),
-                    iconCircleColor = Color.White.copy(alpha = 0.55f),
-                    onClick = { onNavigate(AppScreen.SENSORS) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_sensors")
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                QuickActionTile(
-                    label = "Demo Mode",
-                    icon = Icons.Default.PlayCircleFilled,
-                    containerColor = Color(0xFFF1F5F9),
-                    contentColor = Color(0xFF1E293B),
-                    iconTint = RpPurpleAccent,
-                    iconCircleColor = Color(0xFFEDE9FE),
-                    onClick = { onNavigate(AppScreen.TEST_SCENARIOS) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_test_mode")
-                )
-                QuickActionTile(
-                    label = "History",
-                    icon = Icons.Default.History,
-                    containerColor = Color(0xFFF1F5F9),
-                    contentColor = Color(0xFF1E293B),
-                    iconTint = RpBlockedRed,
-                    iconCircleColor = RpBlockedRedBg,
-                    onClick = { onNavigate(AppScreen.HISTORY) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_history")
-                )
-                QuickActionTile(
-                    label = "Settings",
-                    icon = Icons.Default.Settings,
-                    containerColor = Color(0xFFF1F5F9),
-                    contentColor = Color(0xFF1E293B),
-                    iconTint = Color(0xFF334155),
-                    iconCircleColor = Color(0xFFE2E8F0),
-                    onClick = { onNavigate(AppScreen.SETTINGS) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("quick_action_settings")
-                )
-            }
-        }
-
-        // 4. Sensor Data Mode Switcher & Engineering Screens (Accessible by scrolling below Quick Actions)
-        SensorModeSelectorCard(
-            currentMode = sensorMode,
-            esp32State = esp32State,
-            onSelectMode = onRequestModeSwitch
-        )
-
+        // 5. Simple Driver Help Actions (Report Road Problem / Saved Trips)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            SecondaryActionChip(
-                label = "Hazard Detection",
-                icon = Icons.Default.Warning,
-                onClick = { onNavigate(AppScreen.HAZARD_DETECTION) },
-                modifier = Modifier.weight(1f)
-            )
-            SecondaryActionChip(
-                label = "A* vs Dijkstra",
-                icon = Icons.AutoMirrored.Filled.CompareArrows,
-                onClick = { onNavigate(AppScreen.ALGORITHM_COMPARISON) },
-                modifier = Modifier.weight(1f)
-            )
-        }
+            Button(
+                onClick = onOpenCitizenReport,
+                colors = ButtonDefaults.buttonColors(containerColor = RpCriticalOrange),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .testTag("home_report_hazard_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Report Road Issue",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
             SecondaryActionChip(
-                label = "Journey Simulation",
-                icon = Icons.Default.Navigation,
-                onClick = { onNavigate(AppScreen.JOURNEY_TRACKING) },
-                modifier = Modifier.weight(1f)
-            )
-            SecondaryActionChip(
-                label = "Connectivity & MATLAB",
-                icon = Icons.Default.Storage,
-                onClick = { onNavigate(AppScreen.CONNECTIVITY) },
-                modifier = Modifier.weight(1f)
+                label = "Recent Trips",
+                icon = Icons.Default.History,
+                onClick = { onNavigate(AppScreen.HISTORY) },
+                modifier = Modifier
+                    .weight(0.8f)
+                    .height(48.dp)
             )
         }
     }

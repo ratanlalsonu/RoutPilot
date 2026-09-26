@@ -95,22 +95,8 @@ import org.osmdroid.views.overlay.Overlay
 
 enum class MapVisualStyle(val label: String) {
     STREET("Street"),
-    DARK("Dark"),
     SATELLITE("Satellite")
 }
-
-private val CARTO_DARK_TILE_SOURCE: OnlineTileSourceBase = XYTileSource(
-    "CartoDarkMatter",
-    1,
-    20,
-    256,
-    ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/dark_all/",
-        "https://b.basemaps.cartocdn.com/dark_all/",
-        "https://c.basemaps.cartocdn.com/dark_all/"
-    )
-)
 
 private val ESRI_SATELLITE_TILE_SOURCE: OnlineTileSourceBase = object : OnlineTileSourceBase(
     "EsriWorldImagery",
@@ -164,19 +150,10 @@ fun RealInteractiveMapView(
 
     var showRoadLayer by remember { mutableStateOf(true) }
     var currentZoomLevel by remember { mutableDoubleStateOf(13.3) }
-    var mapStyle by remember { mutableStateOf(if (isDarkTheme) MapVisualStyle.DARK else MapVisualStyle.STREET) }
+    var mapStyle by remember { mutableStateOf(MapVisualStyle.STREET) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
 
-    // Automatically sync map style when the user toggles the app's Dark Mode button
-    LaunchedEffect(isDarkTheme) {
-        if (isDarkTheme && mapStyle == MapVisualStyle.STREET) {
-            mapStyle = MapVisualStyle.DARK
-        } else if (!isDarkTheme && mapStyle == MapVisualStyle.DARK) {
-            mapStyle = MapVisualStyle.STREET
-        }
-    }
-
-    val isNightOrSatellite = mapStyle == MapVisualStyle.DARK || mapStyle == MapVisualStyle.SATELLITE || isDarkTheme
+    val isNightOrSatellite = mapStyle == MapVisualStyle.SATELLITE
 
     val routeNodes = remember(activeRoute, nodes) {
         val pathIds = activeRoute?.nodePath ?: emptyList()
@@ -249,22 +226,21 @@ fun RealInteractiveMapView(
     }
 
     val mapBgColor = when (mapStyle) {
-        MapVisualStyle.DARK -> Color(0xFF070E1B)
         MapVisualStyle.SATELLITE -> Color(0xFF0A1914)
-        MapVisualStyle.STREET -> if (isDarkTheme) Color(0xFF070E1B) else Color(0xFFE8F1E5)
+        MapVisualStyle.STREET -> Color(0xFFE8F1E5)
     }
 
-    val controlSurfaceColor = if (isNightOrSatellite) {
+    val controlSurfaceColor = if (isNightOrSatellite || isDarkTheme) {
         Color(0xFF0F172A).copy(alpha = 0.94f)
     } else {
         Color.White.copy(alpha = 0.94f)
     }
-    val controlBorderColor = if (isNightOrSatellite) {
+    val controlBorderColor = if (isNightOrSatellite || isDarkTheme) {
         Color(0xFF334155)
     } else {
         Color(0xFFCBD5E1)
     }
-    val controlIconTint = if (isNightOrSatellite) {
+    val controlIconTint = if (isNightOrSatellite || isDarkTheme) {
         Color(0xFFF8FAFC)
     } else {
         Color(0xFF0F172A)
@@ -284,7 +260,6 @@ fun RealInteractiveMapView(
                     setTileSource(
                         when (mapStyle) {
                             MapVisualStyle.SATELLITE -> ESRI_SATELLITE_TILE_SOURCE
-                            MapVisualStyle.DARK -> CARTO_DARK_TILE_SOURCE
                             MapVisualStyle.STREET -> TileSourceFactory.MAPNIK
                         }
                     )
@@ -316,39 +291,18 @@ fun RealInteractiveMapView(
             update = { mapView ->
                 val desiredSource = when (mapStyle) {
                     MapVisualStyle.SATELLITE -> ESRI_SATELLITE_TILE_SOURCE
-                    MapVisualStyle.DARK -> CARTO_DARK_TILE_SOURCE
                     MapVisualStyle.STREET -> TileSourceFactory.MAPNIK
                 }
                 if (mapView.tileProvider.tileSource.name() != desiredSource.name()) {
                     mapView.setTileSource(desiredSource)
                 }
 
-                // Configure tile loading background & color filter so Dark and Satellite modes look deep & authentic
                 when (mapStyle) {
-                    MapVisualStyle.DARK -> {
-                        mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
-                            android.graphics.Color.rgb(7, 14, 27)
-                        mapView.overlayManager.tilesOverlay.loadingLineColor =
-                            android.graphics.Color.rgb(18, 31, 53)
-                        // Slight contrast boost for Carto Dark Matter tiles
-                        val nightContrastMatrix = ColorMatrix(
-                            floatArrayOf(
-                                1.12f, 0f, 0f, 0f, -4f,
-                                0f, 1.15f, 0f, 0f, 2f,
-                                0f, 0f, 1.25f, 0f, 10f,
-                                0f, 0f, 0f, 1f, 0f
-                            )
-                        )
-                        mapView.overlayManager.tilesOverlay.setColorFilter(
-                            ColorMatrixColorFilter(nightContrastMatrix)
-                        )
-                    }
                     MapVisualStyle.SATELLITE -> {
                         mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
                             android.graphics.Color.rgb(10, 24, 19)
                         mapView.overlayManager.tilesOverlay.loadingLineColor =
                             android.graphics.Color.rgb(20, 44, 36)
-                        // Rich satellite imagery contrast enhancement
                         val satMatrix = ColorMatrix(
                             floatArrayOf(
                                 1.08f, 0f, 0f, 0f, -6f,
@@ -362,29 +316,11 @@ fun RealInteractiveMapView(
                         )
                     }
                     MapVisualStyle.STREET -> {
-                        if (isDarkTheme) {
-                            mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
-                                android.graphics.Color.rgb(7, 14, 27)
-                            mapView.overlayManager.tilesOverlay.loadingLineColor =
-                                android.graphics.Color.rgb(18, 31, 53)
-                            val darkStreetMatrix = ColorMatrix(
-                                floatArrayOf(
-                                    -0.75f, 0f, 0f, 0f, 200f,
-                                    0f, -0.72f, 0f, 0f, 212f,
-                                    0f, 0f, -0.58f, 0f, 232f,
-                                    0f, 0f, 0f, 1f, 0f
-                                )
-                            )
-                            mapView.overlayManager.tilesOverlay.setColorFilter(
-                                ColorMatrixColorFilter(darkStreetMatrix)
-                            )
-                        } else {
-                            mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
-                                android.graphics.Color.rgb(232, 241, 229)
-                            mapView.overlayManager.tilesOverlay.loadingLineColor =
-                                android.graphics.Color.rgb(203, 213, 225)
-                            mapView.overlayManager.tilesOverlay.setColorFilter(null)
-                        }
+                        mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
+                            android.graphics.Color.rgb(232, 241, 229)
+                        mapView.overlayManager.tilesOverlay.loadingLineColor =
+                            android.graphics.Color.rgb(203, 213, 225)
+                        mapView.overlayManager.tilesOverlay.setColorFilter(null)
                     }
                 }
 
@@ -757,7 +693,7 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         val pt1 = Point()
         val pt2 = Point()
 
-        val isNightOrSat = isDarkTheme || mapVisualStyle == MapVisualStyle.DARK || mapVisualStyle == MapVisualStyle.SATELLITE
+        val isNightOrSat = isDarkTheme || mapVisualStyle == MapVisualStyle.SATELLITE
 
         // 0. Draw subtle geo-anchored River Channel passing under the bridges (B-C, H-P, Q-R) so Bridges are visually unmistakable in Dark & Satellite modes
         val bNode = nodeMap["B"]

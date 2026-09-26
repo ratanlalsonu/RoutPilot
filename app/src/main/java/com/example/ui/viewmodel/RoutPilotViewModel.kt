@@ -20,7 +20,9 @@ import com.example.domain.ThresholdManager
 import com.example.domain.VirtualSensorEngine
 import com.example.model.AlgorithmComparison
 import com.example.model.AlgorithmRouteResult
+import com.example.model.AppRole
 import com.example.model.AppScreen
+import com.example.model.CitizenHazardReport
 import com.example.model.DataSource
 import com.example.model.DiversionAlertState
 import com.example.model.GpsTelemetry
@@ -82,6 +84,52 @@ class RoutPilotViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _isDarkTheme = MutableStateFlow(prefs.getBoolean("dark_theme_enabled", false))
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+
+    // Role-Based Panel State: USER_PANEL (Driver Mode) vs ADMIN_PANEL (Traffic Authority Mode)
+    private val _activeRole = MutableStateFlow(AppRole.USER_PANEL)
+    val activeRole: StateFlow<AppRole> = _activeRole.asStateFlow()
+
+    private val _isAdminAuthenticated = MutableStateFlow(false)
+    val isAdminAuthenticated: StateFlow<Boolean> = _isAdminAuthenticated.asStateFlow()
+
+    private val _showAdminLoginModal = MutableStateFlow(false)
+    val showAdminLoginModal: StateFlow<Boolean> = _showAdminLoginModal.asStateFlow()
+
+    private val _adminRoadOverrides = MutableStateFlow<Map<String, RoutingAlgorithms.RoadStatusInfo>>(emptyMap())
+    val adminRoadOverrides: StateFlow<Map<String, RoutingAlgorithms.RoadStatusInfo>> = _adminRoadOverrides.asStateFlow()
+
+    private val _adminEmergencyBroadcast = MutableStateFlow<String?>(
+        "TRAFFIC AUTHORITY ADVISORY: Bridge B1 (B-C) under structural vibration alert & Link H-I under active lane work. Follow Safe Optimal Route A → D → H → P → Q → M → T."
+    )
+    val adminEmergencyBroadcast: StateFlow<String?> = _adminEmergencyBroadcast.asStateFlow()
+
+    private val _citizenHazardReports = MutableStateFlow(
+        listOf(
+            CitizenHazardReport(
+                id = "CR-101",
+                edgeId = "B-C",
+                roadName = "Bridge B1 Main Span (B - C)",
+                hazardType = "Heavy Deck Vibration & Expansion Joint Noise",
+                severity = HazardSeverity.CRITICAL,
+                description = "Drivers felt strong vertical deck vibration near Pier 2 on Bridge B1.",
+                reportedBy = "Driver RJ-14-CA-8921 (User Panel)",
+                timestampLabel = "4 mins ago",
+                status = "VERIFIED_ACTIVE"
+            ),
+            CitizenHazardReport(
+                id = "CR-102",
+                edgeId = "H-I",
+                roadName = "Central Corridor Link (H - I)",
+                hazardType = "Road Construction & Single-Lane Bottleneck",
+                severity = HazardSeverity.WARNING,
+                description = "JCB machinery and barricades occupying left 2 lanes between Node H and Node I.",
+                reportedBy = "Driver DL-01-AB-4410 (User Panel)",
+                timestampLabel = "9 mins ago",
+                status = "PENDING_VERIFICATION"
+            )
+        )
+    )
+    val citizenHazardReports: StateFlow<List<CitizenHazardReport>> = _citizenHazardReports.asStateFlow()
 
     // Two Sensor Modes: VIRTUAL (DEFAULT) vs EXTERNAL_HARDWARE
     private val _sensorMode = MutableStateFlow(SensorMode.VIRTUAL)
@@ -300,7 +348,138 @@ class RoutPilotViewModel(application: Application) : AndroidViewModel(applicatio
             _isFirstLaunch.value = false
             prefs.edit().putBoolean("has_completed_first_launch", true).apply()
         }
+        _activeRole.value = AppRole.USER_PANEL
         navigateTo(AppScreen.HOME)
+    }
+
+    fun requestAdminPanelFromSplashOrApp() {
+        if (_isFirstLaunch.value) {
+            _isFirstLaunch.value = false
+            prefs.edit().putBoolean("has_completed_first_launch", true).apply()
+        }
+        if (_isAdminAuthenticated.value) {
+            _activeRole.value = AppRole.ADMIN_PANEL
+            navigateTo(AppScreen.ADMIN_DASHBOARD)
+        } else {
+            _showAdminLoginModal.value = true
+        }
+    }
+
+    fun dismissAdminLoginModal() {
+        _showAdminLoginModal.value = false
+    }
+
+    fun authenticateAdmin(adminId: String, pin: String): Boolean {
+        val cleanPin = pin.trim()
+        val isValid = cleanPin == "1234" || cleanPin == "admin" || cleanPin == "2026"
+        if (isValid) {
+            _isAdminAuthenticated.value = true
+            _showAdminLoginModal.value = false
+            _activeRole.value = AppRole.ADMIN_PANEL
+            navigateTo(AppScreen.ADMIN_DASHBOARD)
+        }
+        return isValid
+    }
+
+    fun quickDemoAdminLogin() {
+        _isAdminAuthenticated.value = true
+        _showAdminLoginModal.value = false
+        _activeRole.value = AppRole.ADMIN_PANEL
+        navigateTo(AppScreen.ADMIN_DASHBOARD)
+    }
+
+    fun switchToUserPanel() {
+        _activeRole.value = AppRole.USER_PANEL
+        navigateTo(AppScreen.HOME)
+    }
+
+    fun logoutAdmin() {
+        _isAdminAuthenticated.value = false
+        _activeRole.value = AppRole.USER_PANEL
+        navigateTo(AppScreen.HOME)
+    }
+
+    fun setAdminRoadStatusOverride(edgeId: String, status: RoadStatusType, reason: String) {
+        val updated = _adminRoadOverrides.value.toMutableMap()
+        val severity = when (status) {
+            RoadStatusType.OPEN -> HazardSeverity.SAFE
+            RoadStatusType.WARNING -> HazardSeverity.WARNING
+            RoadStatusType.RESTRICTED -> HazardSeverity.WARNING
+            RoadStatusType.BLOCKED -> HazardSeverity.CRITICAL
+        }
+        val reverseEdgeId = edgeId.split("-").reversed().joinToString("-")
+        val info = RoutingAlgorithms.RoadStatusInfo(
+            status = status,
+            severity = severity,
+            hazardId = "ADMIN-$edgeId",
+            reason = reason,
+            dataSource = DataSource.CALCULATED
+        )
+        updated[edgeId] = info
+        updated[reverseEdgeId] = info
+        _adminRoadOverrides.value = updated
+        rebuildGraphAndRoutes(recordInDb = true)
+    }
+
+    fun clearAllAdminRoadOverrides() {
+        _adminRoadOverrides.value = emptyMap()
+        rebuildGraphAndRoutes(recordInDb = false)
+    }
+
+    fun updateAdminEmergencyBroadcast(message: String?) {
+        _adminEmergencyBroadcast.value = message?.takeIf { it.isNotBlank() }
+    }
+
+    fun submitCitizenHazardReport(
+        edgeId: String,
+        roadName: String,
+        hazardType: String,
+        severity: HazardSeverity,
+        description: String
+    ) {
+        val newReport = CitizenHazardReport(
+            id = "CR-${100 + _citizenHazardReports.value.size + 1}",
+            edgeId = edgeId,
+            roadName = roadName,
+            hazardType = hazardType,
+            severity = severity,
+            description = description.ifBlank { "Reported from User Panel by commuter." },
+            reportedBy = "Driver (${_selectedVehicle.value.label} • User Panel)",
+            timestampLabel = "Just now",
+            status = "PENDING_VERIFICATION"
+        )
+        _citizenHazardReports.value = listOf(newReport) + _citizenHazardReports.value
+    }
+
+    fun verifyAndBlockCitizenReport(reportId: String) {
+        val target = _citizenHazardReports.value.find { it.id == reportId } ?: return
+        _citizenHazardReports.value = _citizenHazardReports.value.map {
+            if (it.id == reportId) it.copy(status = "VERIFIED_ACTIVE") else it
+        }
+        val newStatus = if (target.severity == HazardSeverity.CRITICAL || target.severity == HazardSeverity.BLOCKED) {
+            RoadStatusType.BLOCKED
+        } else {
+            RoadStatusType.RESTRICTED
+        }
+        setAdminRoadStatusOverride(
+            edgeId = target.edgeId,
+            status = newStatus,
+            reason = "Admin Verified: ${target.hazardType}"
+        )
+    }
+
+    fun resolveCitizenReport(reportId: String) {
+        val target = _citizenHazardReports.value.find { it.id == reportId }
+        _citizenHazardReports.value = _citizenHazardReports.value.map {
+            if (it.id == reportId) it.copy(status = "RESOLVED") else it
+        }
+        if (target != null) {
+            setAdminRoadStatusOverride(
+                edgeId = target.edgeId,
+                status = RoadStatusType.OPEN,
+                reason = "Cleared by Admin Authority"
+            )
+        }
     }
 
     fun navigateTo(screen: AppScreen) {
@@ -313,11 +492,16 @@ class RoutPilotViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun navigateBack(): Boolean {
+        val rootScreen = if (_activeRole.value == AppRole.ADMIN_PANEL) {
+            AppScreen.ADMIN_DASHBOARD
+        } else {
+            AppScreen.HOME
+        }
         return if (screenBackStack.isNotEmpty()) {
             _currentScreen.value = screenBackStack.removeLast()
             true
-        } else if (_currentScreen.value != AppScreen.HOME && _currentScreen.value != AppScreen.SPLASH) {
-            _currentScreen.value = AppScreen.HOME
+        } else if (_currentScreen.value != rootScreen && _currentScreen.value != AppScreen.SPLASH) {
+            _currentScreen.value = rootScreen
             true
         } else {
             false
@@ -1303,6 +1487,15 @@ class RoutPilotViewModel(application: Application) : AndroidViewModel(applicatio
                 reason = "Bridge Approach Warning",
                 dataSource = DataSource.VIRTUAL_TEST
             )
+        }
+
+        // Apply Traffic Authority Admin Panel manual overrides (OPEN / WARNING / RESTRICTED / BLOCKED)
+        _adminRoadOverrides.value.forEach { (edgeKey, adminInfo) ->
+            if (adminInfo.status == RoadStatusType.OPEN) {
+                overrides.remove(edgeKey)
+            } else {
+                overrides[edgeKey] = adminInfo
+            }
         }
 
         val (nodes, edges) = RoutingAlgorithms.buildMonitoredGraph(

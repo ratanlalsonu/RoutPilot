@@ -86,9 +86,15 @@ enum class RoutingAlgorithm(val code: String, val displayName: String) {
     DIJKSTRA("DIJKSTRA", "Dijkstra")
 }
 
+enum class AppRole(val displayName: String, val badgeText: String) {
+    USER_PANEL("User / Driver Panel", "USER"),
+    ADMIN_PANEL("Admin Authority Panel", "ADMIN")
+}
+
 enum class AppScreen {
     SPLASH,
     HOME,
+    ADMIN_DASHBOARD,
     LIVE_MAP,
     SENSORS,
     ROUTE_PLANNER,
@@ -101,6 +107,18 @@ enum class AppScreen {
     CONNECTIVITY,
     DATA_SOURCES
 }
+
+data class CitizenHazardReport(
+    val id: String,
+    val edgeId: String,
+    val roadName: String,
+    val hazardType: String,
+    val severity: HazardSeverity,
+    val description: String,
+    val reportedBy: String = "Driver (User Panel)",
+    val timestampLabel: String,
+    val status: String = "PENDING_VERIFICATION" // PENDING_VERIFICATION, VERIFIED_ACTIVE, RESOLVED
+)
 
 data class SensorThresholdRule(
     val unit: String,

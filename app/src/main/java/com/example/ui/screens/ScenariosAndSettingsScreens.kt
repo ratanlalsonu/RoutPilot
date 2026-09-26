@@ -74,6 +74,7 @@ import com.example.model.HardwareTestConnectionResult
 import com.example.model.RouteCostWeights
 import com.example.model.SensorMode
 import com.example.model.SystemConnectivityState
+import com.example.model.VehicleType
 import com.example.model.VirtualEngineState
 import com.example.model.VirtualScenario
 import com.example.ui.components.SensorModeSelectorCard
@@ -273,6 +274,13 @@ fun SettingsScreen(
     hardwareConfig: HardwareConfiguration,
     hardwareTestResult: HardwareTestConnectionResult,
     isDarkTheme: Boolean,
+    isAdminMode: Boolean = false,
+    selectedVehicle: VehicleType = VehicleType.CAR,
+    onSelectVehicle: (VehicleType) -> Unit = {},
+    onOpenCitizenReport: () -> Unit = {},
+    onOpenHistory: () -> Unit = {},
+    onOpenAdminLogin: () -> Unit = {},
+    onExitAdminMode: () -> Unit = {},
     onUpdateWeights: (RouteCostWeights) -> Unit,
     onSaveHardwareConfig: (HardwareConfiguration) -> Unit,
     onTestHardwareConnection: (HardwareConfiguration) -> Unit,
@@ -310,428 +318,731 @@ fun SettingsScreen(
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Route Cost Weights & System Settings Card (Top-most matching Light & Dark Mode Reference Images)
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        if (!isAdminMode) {
+            // =========================================================================
+            // USER MODE SETTINGS: Ultra-Simple Google Maps-Style Preferences
+            // (Zero algorithm, cost weight, or hardware sensor jargon)
+            // =========================================================================
+
+            // 1. Display & Map Appearance (Light / Dark)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "Route Cost Weights",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                SettingSliderRow(
-                    label = "Distance Weight",
-                    value = distanceW,
-                    range = 0.2f..3.0f,
-                    valueText = String.format(Locale.US, "%.1f", distanceW),
-                    onValueChange = { distanceW = it }
-                )
-                SettingSliderRow(
-                    label = "Travel Time Weight",
-                    value = timeW,
-                    range = 0.2f..3.0f,
-                    valueText = String.format(Locale.US, "%.1f", timeW),
-                    onValueChange = { timeW = it }
-                )
-                SettingSliderRow(
-                    label = "Traffic Weight",
-                    value = trafficW,
-                    range = 0.0f..2.5f,
-                    valueText = String.format(Locale.US, "%.1f", trafficW),
-                    onValueChange = { trafficW = it }
-                )
-                SettingSliderRow(
-                    label = "Warning Penalty",
-                    value = warningP,
-                    range = 1.0f..25.0f,
-                    valueText = String.format(Locale.US, "%.1f", warningP),
-                    onValueChange = { warningP = it }
-                )
-                SettingSliderRow(
-                    label = "Critical Penalty",
-                    value = criticalP,
-                    range = 5.0f..60.0f,
-                    valueText = String.format(Locale.US, "%.1f", criticalP),
-                    onValueChange = { criticalP = it }
-                )
-                SettingSliderRow(
-                    label = "Vehicle Restriction Penalty",
-                    value = vehicleP,
-                    range = 20.0f..200.0f,
-                    valueText = String.format(Locale.US, "%.1f", vehicleP),
-                    onValueChange = { vehicleP = it }
-                )
-                SettingSliderRow(
-                    label = "Simulation Speed",
-                    value = simSpeed,
-                    range = 0.5f..3.0f,
-                    valueText = String.format(Locale.US, "%.1fx", simSpeed),
-                    onValueChange = { simSpeed = it }
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Theme Toggle (Light / Dark) matching Reference Image
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Theme",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = "App Appearance",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Choose Day (Light) or Night (Dark) screen style",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         ThemeChoicePill(
-                            label = "Light",
+                            label = "Day (Light)",
                             icon = Icons.Default.LightMode,
                             selected = !isDarkTheme,
                             onClick = { onToggleDarkTheme(false) },
-                            modifier = Modifier.testTag("theme_light_button")
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("theme_light_button")
                         )
                         ThemeChoicePill(
-                            label = "Dark",
+                            label = "Night (Dark)",
                             icon = Icons.Default.DarkMode,
                             selected = isDarkTheme,
                             onClick = { onToggleDarkTheme(true) },
-                            modifier = Modifier.testTag("theme_dark_button")
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("theme_dark_button")
                         )
                     }
                 }
             }
-        }
 
-        Button(
-            onClick = {
-                onSaveHardwareConfig(draftHardwareConfig)
-                onUpdateWeights(
-                    RouteCostWeights(
-                        distanceWeight = distanceW,
-                        timeWeight = timeW,
-                        trafficWeight = trafficW,
-                        warningPenalty = warningP,
-                        criticalPenalty = criticalP,
-                        vehicleRestrictionPenalty = vehicleP,
-                        simulationSpeed = simSpeed
-                    )
-                )
-                onSaveAndReturn()
-            },
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RpPrimaryBlue),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .testTag("save_settings_button")
-        ) {
-            Icon(Icons.Default.Save, contentDescription = null, tint = Color.White)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Save Settings",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
-
-        // 2. Sensor Mode Selector
-        SensorModeSelectorCard(
-            currentMode = sensorMode,
-            esp32State = esp32State,
-            onSelectMode = onRequestModeSwitch
-        )
-
-        // 3. Hardware Configuration Card (ESP32_HTTP_ENDPOINT, ESP32_WS_ENDPOINT, Device ID, Connection Type)
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("hardware_configuration_card")
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            // 2. Your Vehicle Type (Simple 1-Tap Choice like Google Maps)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.DeveloperBoard,
-                            contentDescription = "Hardware Configuration",
-                            tint = RpPrimaryBlue,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Hardware Configuration",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "ESP32 & Physical Sensors (Optional for Virtual Mode)",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    Text(
+                        text = "Your Vehicle",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Select your vehicle so heavy trucks and buses automatically avoid weak bridges.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                    Surface(
-                        color = if (draftHardwareConfig.isConfigured) RpSafeGreenBg else RpWarningYellowBg,
-                        shape = RoundedCornerShape(8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = if (draftHardwareConfig.isConfigured) "CONFIGURED" else "OPTIONAL",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (draftHardwareConfig.isConfigured) RpSafeGreen else Color(0xFFB45309),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-
-                if (!draftHardwareConfig.isConfigured) {
-                    Surface(
-                        color = RpBlockedRed.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, RpBlockedRed.copy(alpha = 0.35f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text(
-                                text = "ESP32 endpoint not configured.",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = RpBlockedRed
-                            )
-                            Text(
-                                text = "Virtual Mode works completely without ESP32 endpoints. Enter your ESP32 HTTP or WebSocket endpoint below when ready to test physical sensors in External Hardware Mode.",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = httpEndpointInput,
-                    onValueChange = {
-                        httpEndpointInput = it
-                        configSavedFeedback = false
-                    },
-                    label = { Text("ESP32 HTTP Endpoint (ESP32_HTTP_ENDPOINT)", fontSize = 11.sp) },
-                    placeholder = { Text("http://192.168.1.50/sensors", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("esp32_http_endpoint_input")
-                )
-
-                OutlinedTextField(
-                    value = wsEndpointInput,
-                    onValueChange = {
-                        wsEndpointInput = it
-                        configSavedFeedback = false
-                    },
-                    label = { Text("ESP32 WebSocket Endpoint (ESP32_WS_ENDPOINT)", fontSize = 11.sp) },
-                    placeholder = { Text("ws://192.168.1.50:81/ws", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("esp32_ws_endpoint_input")
-                )
-
-                OutlinedTextField(
-                    value = deviceIdInput,
-                    onValueChange = {
-                        deviceIdInput = it
-                        configSavedFeedback = false
-                    },
-                    label = { Text("Device ID", fontSize = 11.sp) },
-                    placeholder = { Text("ESP32-001", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("esp32_device_id_input")
-                )
-
-                Text(
-                    text = "Connection Type",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    HardwareConnectionType.entries.forEach { connType ->
-                        val selected = selectedConnType == connType
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    selectedConnType = connType
-                                    configSavedFeedback = false
+                        VehicleType.entries.forEach { vehicle ->
+                            val selected = selectedVehicle == vehicle
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selected) RpPrimaryBlue.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(1.5.dp, if (selected) RpPrimaryBlue else MaterialTheme.colorScheme.outline),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onSelectVehicle(vehicle) }
+                                    .testTag("settings_vehicle_${vehicle.name.lowercase()}")
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
+                                    Text(
+                                        text = vehicle.label,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                        color = if (selected) RpPrimaryBlue else MaterialTheme.colorScheme.onSurface
+                                    )
                                 }
-                                .testTag("conn_type_${connType.code.lowercase()}"),
-                            color = if (selected) RpPrimaryBlue.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, if (selected) RpPrimaryBlue else MaterialTheme.colorScheme.outline)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
-                                Text(
-                                    text = when (connType) {
-                                        HardwareConnectionType.HTTP -> "HTTP"
-                                        HardwareConnectionType.WEBSOCKET -> "WebSocket"
-                                        HardwareConnectionType.HTTP_AND_WS -> "HTTP+WS"
-                                        HardwareConnectionType.MQTT_FASTAPI -> "MQTT"
-                                    },
-                                    fontSize = 10.sp,
-                                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
-                                    color = if (selected) RpPrimaryBlue else MaterialTheme.colorScheme.onSurface
-                                )
                             }
                         }
                     }
                 }
+            }
 
-                // Hardware Test Connection Result Banner
-                if (hardwareTestResult.isTesting || hardwareTestResult.tested) {
-                    val resultColor = when {
-                        hardwareTestResult.isTesting -> Color(0xFFD97706)
-                        hardwareTestResult.success -> RpSafeGreen
-                        else -> RpBlockedRed
-                    }
+            // 3. Road Safety & Driver Help
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Road Safety & Help",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
                     Surface(
-                        color = resultColor.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = RpSafeGreenBg,
+                        border = BorderStroke(1.dp, RpSafeGreen.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(RpSafeGreen)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Automatic Closed-Bridge Rerouting: ON",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = RpSafeGreen
+                                )
+                                Text(
+                                    text = "Automatically guides you onto safe open roads when a bridge or road ahead is closed.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF065F46)
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onOpenCitizenReport,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("settings_report_issue_button")
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = RpCriticalOrange, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Report Road Issue", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = onOpenHistory,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("settings_recent_trips_button")
+                        ) {
+                            Icon(Icons.Default.History, contentDescription = null, tint = RpPrimaryBlue, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Recent Trips", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // 4. Discreet "About App" Card at the very bottom (Hidden Admin Access inside Settings)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "About RoutePilot",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Live Road & Bridge Navigation • Map Data 2026",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Discreet row at the very bottom of Settings for authorized Admin entry
+                    Surface(
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, resultColor.copy(alpha = 0.5f)),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("hardware_test_result_banner")
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onOpenAdminLogin() }
+                            .testTag("settings_admin_access_button")
                     ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = hardwareTestResult.statusHeadline,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = resultColor
+                                text = "Version 2.4.0 (Build 2026.09)",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = hardwareTestResult.statusSubtext,
+                                text = "System Console",
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                             )
                         }
                     }
                 }
+            }
+        } else {
+            // =========================================================================
+            // ADMIN MODE SETTINGS: Full Engineering, Algorithm Weights & ESP32 Config
+            // =========================================================================
 
-                if (configSavedFeedback) {
+            // Admin Active Banner with quick return to Driver App
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = RpPurpleAccent.copy(alpha = 0.12f)),
+                border = BorderStroke(1.5.dp, RpPurpleAccent),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        text = "✓ Hardware Configuration saved.",
+                        text = "Admin Engineering & Calibration Settings",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = RpPurpleAccent
+                    )
+                    Text(
+                        text = "Configure A* / Dijkstra route cost weights, switch between Virtual and ESP32 Hardware sensor modes, and manage endpoints.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onSaveAndReturn,
+                            colors = ButtonDefaults.buttonColors(containerColor = RpPurpleAccent),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Admin Control Center", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        OutlinedButton(
+                            onClick = onExitAdminMode,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, RpPrimaryBlue),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("settings_exit_admin_button")
+                        ) {
+                            Text("Return to Driver App", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RpPrimaryBlue)
+                        }
+                    }
+                }
+            }
+
+            // 1. Route Cost Weights & System Settings Card
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Route Cost Weights (A* / Dijkstra)",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    SettingSliderRow(
+                        label = "Distance Weight",
+                        value = distanceW,
+                        range = 0.2f..3.0f,
+                        valueText = String.format(Locale.US, "%.1f", distanceW),
+                        onValueChange = { distanceW = it }
+                    )
+                    SettingSliderRow(
+                        label = "Travel Time Weight",
+                        value = timeW,
+                        range = 0.2f..3.0f,
+                        valueText = String.format(Locale.US, "%.1f", timeW),
+                        onValueChange = { timeW = it }
+                    )
+                    SettingSliderRow(
+                        label = "Traffic Weight",
+                        value = trafficW,
+                        range = 0.0f..2.5f,
+                        valueText = String.format(Locale.US, "%.1f", trafficW),
+                        onValueChange = { trafficW = it }
+                    )
+                    SettingSliderRow(
+                        label = "Warning Penalty",
+                        value = warningP,
+                        range = 1.0f..25.0f,
+                        valueText = String.format(Locale.US, "%.1f", warningP),
+                        onValueChange = { warningP = it }
+                    )
+                    SettingSliderRow(
+                        label = "Critical Penalty",
+                        value = criticalP,
+                        range = 5.0f..60.0f,
+                        valueText = String.format(Locale.US, "%.1f", criticalP),
+                        onValueChange = { criticalP = it }
+                    )
+                    SettingSliderRow(
+                        label = "Vehicle Restriction Penalty",
+                        value = vehicleP,
+                        range = 20.0f..200.0f,
+                        valueText = String.format(Locale.US, "%.1f", vehicleP),
+                        onValueChange = { vehicleP = it }
+                    )
+                    SettingSliderRow(
+                        label = "Simulation Speed",
+                        value = simSpeed,
+                        range = 0.5f..3.0f,
+                        valueText = String.format(Locale.US, "%.1fx", simSpeed),
+                        onValueChange = { simSpeed = it }
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Theme Toggle (Light / Dark)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Theme",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ThemeChoicePill(
+                                label = "Light",
+                                icon = Icons.Default.LightMode,
+                                selected = !isDarkTheme,
+                                onClick = { onToggleDarkTheme(false) },
+                                modifier = Modifier.testTag("theme_light_button")
+                            )
+                            ThemeChoicePill(
+                                label = "Dark",
+                                icon = Icons.Default.DarkMode,
+                                selected = isDarkTheme,
+                                onClick = { onToggleDarkTheme(true) },
+                                modifier = Modifier.testTag("theme_dark_button")
+                            )
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = {
+                    onSaveHardwareConfig(draftHardwareConfig)
+                    onUpdateWeights(
+                        RouteCostWeights(
+                            distanceWeight = distanceW,
+                            timeWeight = timeW,
+                            trafficWeight = trafficW,
+                            warningPenalty = warningP,
+                            criticalPenalty = criticalP,
+                            vehicleRestrictionPenalty = vehicleP,
+                            simulationSpeed = simSpeed
+                        )
+                    )
+                    onSaveAndReturn()
+                },
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = RpPrimaryBlue),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag("save_settings_button")
+            ) {
+                Icon(Icons.Default.Save, contentDescription = null, tint = Color.White)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Save Admin Settings",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+
+            // 2. Sensor Mode Selector
+            SensorModeSelectorCard(
+                currentMode = sensorMode,
+                esp32State = esp32State,
+                onSelectMode = onRequestModeSwitch
+            )
+
+            // 3. Hardware Configuration Card (ESP32_HTTP_ENDPOINT, ESP32_WS_ENDPOINT, Device ID, Connection Type)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("hardware_configuration_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.DeveloperBoard,
+                                contentDescription = "Hardware Configuration",
+                                tint = RpPrimaryBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Hardware Configuration",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "ESP32 & Physical Sensors (Optional for Virtual Mode)",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = if (draftHardwareConfig.isConfigured) RpSafeGreenBg else RpWarningYellowBg,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = if (draftHardwareConfig.isConfigured) "CONFIGURED" else "OPTIONAL",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (draftHardwareConfig.isConfigured) RpSafeGreen else Color(0xFFB45309),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    if (!draftHardwareConfig.isConfigured) {
+                        Surface(
+                            color = RpBlockedRed.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, RpBlockedRed.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = "ESP32 endpoint not configured.",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = RpBlockedRed
+                                )
+                                Text(
+                                    text = "Virtual Mode works completely without ESP32 endpoints. Enter your ESP32 HTTP or WebSocket endpoint below when ready to test physical sensors in External Hardware Mode.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = httpEndpointInput,
+                        onValueChange = {
+                            httpEndpointInput = it
+                            configSavedFeedback = false
+                        },
+                        label = { Text("ESP32 HTTP Endpoint (ESP32_HTTP_ENDPOINT)", fontSize = 11.sp) },
+                        placeholder = { Text("http://192.168.1.50/sensors", fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("esp32_http_endpoint_input")
+                    )
+
+                    OutlinedTextField(
+                        value = wsEndpointInput,
+                        onValueChange = {
+                            wsEndpointInput = it
+                            configSavedFeedback = false
+                        },
+                        label = { Text("ESP32 WebSocket Endpoint (ESP32_WS_ENDPOINT)", fontSize = 11.sp) },
+                        placeholder = { Text("ws://192.168.1.50:81/ws", fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("esp32_ws_endpoint_input")
+                    )
+
+                    OutlinedTextField(
+                        value = deviceIdInput,
+                        onValueChange = {
+                            deviceIdInput = it
+                            configSavedFeedback = false
+                        },
+                        label = { Text("Device ID", fontSize = 11.sp) },
+                        placeholder = { Text("ESP32-001", fontSize = 12.sp) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("esp32_device_id_input")
+                    )
+
+                    Text(
+                        text = "Connection Type",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = RpSafeGreen
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            onSaveHardwareConfig(draftHardwareConfig)
-                            configSavedFeedback = true
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = RpPrimaryBlue),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp)
-                            .testTag("save_hardware_config_button")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text("Save Configuration", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        HardwareConnectionType.entries.forEach { connType ->
+                            val selected = selectedConnType == connType
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        selectedConnType = connType
+                                        configSavedFeedback = false
+                                    }
+                                    .testTag("conn_type_${connType.code.lowercase()}"),
+                                color = if (selected) RpPrimaryBlue.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, if (selected) RpPrimaryBlue else MaterialTheme.colorScheme.outline)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
+                                    Text(
+                                        text = when (connType) {
+                                            HardwareConnectionType.HTTP -> "HTTP"
+                                            HardwareConnectionType.WEBSOCKET -> "WebSocket"
+                                            HardwareConnectionType.HTTP_AND_WS -> "HTTP+WS"
+                                            HardwareConnectionType.MQTT_FASTAPI -> "MQTT"
+                                        },
+                                        fontSize = 10.sp,
+                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
+                                        color = if (selected) RpPrimaryBlue else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Hardware Test Connection Result Banner
+                    if (hardwareTestResult.isTesting || hardwareTestResult.tested) {
+                        val resultColor = when {
+                            hardwareTestResult.isTesting -> Color(0xFFD97706)
+                            hardwareTestResult.success -> RpSafeGreen
+                            else -> RpBlockedRed
+                        }
+                        Surface(
+                            color = resultColor.copy(alpha = 0.14f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, resultColor.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("hardware_test_result_banner")
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = hardwareTestResult.statusHeadline,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = resultColor
+                                )
+                                Text(
+                                    text = hardwareTestResult.statusSubtext,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    if (configSavedFeedback) {
+                        Text(
+                            text = "✓ Hardware Configuration saved.",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = RpSafeGreen
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                onSaveHardwareConfig(draftHardwareConfig)
+                                configSavedFeedback = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = RpPrimaryBlue),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("save_hardware_config_button")
+                        ) {
+                            Text("Save Configuration", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onTestHardwareConnection(draftHardwareConfig)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.5.dp, RpPrimaryBlue),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                                .testTag("test_hardware_connection_button")
+                        ) {
+                            Text(
+                                text = if (hardwareTestResult.isTesting) "Testing..." else "Test Connection",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = RpPrimaryBlue
+                            )
+                        }
                     }
 
                     OutlinedButton(
                         onClick = {
-                            onTestHardwareConnection(draftHardwareConfig)
+                            httpEndpointInput = ""
+                            wsEndpointInput = ""
+                            deviceIdInput = "ESP32-001"
+                            selectedConnType = HardwareConnectionType.HTTP_AND_WS
+                            onSaveHardwareConfig(
+                                HardwareConfiguration(
+                                    httpEndpoint = "",
+                                    wsEndpoint = "",
+                                    deviceId = "ESP32-001",
+                                    connectionType = HardwareConnectionType.HTTP_AND_WS
+                                )
+                            )
+                            configSavedFeedback = false
                         },
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.5.dp, RpPrimaryBlue),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp)
-                            .testTag("test_hardware_connection_button")
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .testTag("clear_hardware_config_button")
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Clear Configuration",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (hardwareTestResult.isTesting) "Testing..." else "Test Connection",
+                            text = "Clear Configuration",
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = RpPrimaryBlue
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        httpEndpointInput = ""
-                        wsEndpointInput = ""
-                        deviceIdInput = "ESP32-001"
-                        selectedConnType = HardwareConnectionType.HTTP_AND_WS
-                        onSaveHardwareConfig(
-                            HardwareConfiguration(
-                                httpEndpoint = "",
-                                wsEndpoint = "",
-                                deviceId = "ESP32-001",
-                                connectionType = HardwareConnectionType.HTTP_AND_WS
-                            )
-                        )
-                        configSavedFeedback = false
-                    },
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(42.dp)
-                        .testTag("clear_hardware_config_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Clear Configuration",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Clear Configuration",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
@@ -819,6 +1130,7 @@ private fun ThemeChoicePill(
 @Composable
 fun HistoryScreen(
     events: List<HistoryEventEntity>,
+    isAdminMode: Boolean = false,
     onNavigate: (AppScreen) -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -830,18 +1142,20 @@ fun HistoryScreen(
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            MoreSubNavButton("Test Mode", false, { onNavigate(AppScreen.TEST_SCENARIOS) }, Modifier.weight(1f))
-            MoreSubNavButton("History", true, { onNavigate(AppScreen.HISTORY) }, Modifier.weight(1f))
-            MoreSubNavButton("System", false, { onNavigate(AppScreen.CONNECTIVITY) }, Modifier.weight(1f))
-            MoreSubNavButton("Settings", false, { onNavigate(AppScreen.SETTINGS) }, Modifier.weight(1f))
+        if (isAdminMode) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                MoreSubNavButton("Test Mode", false, { onNavigate(AppScreen.TEST_SCENARIOS) }, Modifier.weight(1f))
+                MoreSubNavButton("History", true, { onNavigate(AppScreen.HISTORY) }, Modifier.weight(1f))
+                MoreSubNavButton("System", false, { onNavigate(AppScreen.CONNECTIVITY) }, Modifier.weight(1f))
+                MoreSubNavButton("Settings", false, { onNavigate(AppScreen.SETTINGS) }, Modifier.weight(1f))
+            }
         }
 
         Text(
-            text = "Event & Route History (Room Local DB)",
+            text = if (isAdminMode) "Event & Route History (Room Local DB)" else "Recent Trips & Road Alerts",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
@@ -868,7 +1182,7 @@ fun HistoryScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "No history events recorded yet.",
+                        text = "No recent trips recorded yet.",
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -898,30 +1212,38 @@ fun HistoryScreen(
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            Surface(
-                                color = if (isLive) RpSafeGreenBg else RpPurpleBg,
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = ev.mode,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isLive) RpSafeGreen else RpPurpleAccent,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
+                            if (isAdminMode) {
+                                Surface(
+                                    color = if (isLive) RpSafeGreenBg else RpPurpleBg,
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = ev.mode,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLive) RpSafeGreen else RpPurpleAccent,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                         Text(
-                            text = "Location: ${ev.location} • Source: ${ev.source} • Status: ${ev.status}",
+                            text = if (isAdminMode) {
+                                "Location: ${ev.location} • Source: ${ev.source} • Status: ${ev.status}"
+                            } else {
+                                "${ev.location} • ${ev.status}"
+                            },
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = RpPrimaryBlue
                         )
-                        Text(
-                            text = ev.details,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (isAdminMode) {
+                            Text(
+                                text = ev.details,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

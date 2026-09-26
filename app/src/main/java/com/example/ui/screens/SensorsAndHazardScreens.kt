@@ -946,32 +946,31 @@ fun HazardDetectionScreen(
     sensorMode: SensorMode,
     activeHazards: List<HazardEntity>,
     activeEval: HazardEvaluation?,
+    isAdminMode: Boolean = false,
     onViewOnMap: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val primaryHazard = activeHazards.firstOrNull()
     val isHardware = sensorMode == SensorMode.EXTERNAL_HARDWARE
-    val nowFormatted = SimpleDateFormat("dd MMM yyyy, hh:mm:ss a", Locale.US).format(Date())
+    val nowFormatted = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US).format(Date())
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
             .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Top Red/Orange Alert Card matching Reference Image (Light & Dark Mode)
         val hasHazard = primaryHazard != null || (activeEval?.hazardDetected == true)
         val alertBgColor = if (hasHazard) {
             RpBlockedRed.copy(alpha = 0.14f)
         } else {
             RpSafeGreen.copy(alpha = 0.14f)
         }
+
         Card(
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = alertBgColor
-            ),
+            colors = CardDefaults.cardColors(containerColor = alertBgColor),
             border = BorderStroke(1.5.dp, if (hasHazard) RpBlockedRed else RpSafeGreen),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -990,7 +989,7 @@ fun HazardDetectionScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Warning,
-                        contentDescription = "Hazard Status",
+                        contentDescription = "Road Alert Status",
                         tint = Color.White,
                         modifier = Modifier.size(30.dp)
                     )
@@ -998,18 +997,24 @@ fun HazardDetectionScreen(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Text(
-                        text = if (hasHazard) "Hazard Detected" else "No Active Hazards",
+                        text = if (hasHazard) {
+                            if (isAdminMode) "Hazard Detected" else "Bridge Closed Ahead"
+                        } else {
+                            "All Roads Open & Safe"
+                        },
                         fontSize = 19.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = if (hasHazard) RpBlockedRed else RpSafeGreen
                     )
                     Text(
                         text = if (hasHazard) {
-                            activeEval?.description ?: primaryHazard?.hazardTitle ?: "Bridge B1 structural vibration high"
-                        } else if (isHardware) {
-                            "No live hardware hazard detected (Connect ESP32)"
+                            if (isAdminMode) {
+                                activeEval?.description ?: primaryHazard?.hazardTitle ?: "Bridge B1 structural vibration high"
+                            } else {
+                                "Bridge B1 is closed for safety. Safe bypass road is ready for your trip."
+                            }
                         } else {
-                            "All monitored corridors operating within safe thresholds"
+                            "All bridges and roads on your route are open and safe."
                         },
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -1025,97 +1030,8 @@ fun HazardDetectionScreen(
             }
         }
 
-        // Detailed Hazard Attributes Table matching Reference Image
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                HazardDetailRow(
-                    label = "Hazard Type",
-                    value = if (hasHazard) {
-                        primaryHazard?.hazardTitle ?: activeEval?.hazardType?.displayTitle ?: "Bridge Structural"
-                    } else {
-                        "None (Normal)"
-                    }
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Severity",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(110.dp)
-                    )
-                    Text(text = ":  ", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    SeverityStatusBadge(
-                        severity = if (hasHazard) {
-                            activeEval?.severity ?: HazardSeverity.CRITICAL
-                        } else {
-                            HazardSeverity.SAFE
-                        }
-                    )
-                }
-
-                HazardDetailRow(
-                    label = "Sensor",
-                    value = if (hasHazard) {
-                        primaryHazard?.sensorTypesLabel ?: activeEval?.triggeredSensors?.joinToString(", ") ?: "Vibration, Tilt, Strain"
-                    } else {
-                        if (isHardware) "ESP32-001 (No Live Data)" else "Virtual Sensor Array"
-                    }
-                )
-
-                HazardDetailRow(
-                    label = "Values",
-                    value = if (hasHazard) {
-                        primaryHazard?.sensorValuesLabel ?: activeEval?.formattedValues ?: "0.85 g, 4.2°, 320 µε"
-                    } else {
-                        if (isHardware) "NO LIVE SENSOR DATA" else "Within Normal Limits"
-                    }
-                )
-
-                HazardDetailRow(
-                    label = "Location",
-                    value = if (hasHazard) {
-                        primaryHazard?.roadReference ?: activeEval?.roadReference ?: "Bridge B1 (B - C)"
-                    } else {
-                        "All Corridors Clear"
-                    }
-                )
-
-                HazardDetailRow(
-                    label = "Road Status",
-                    value = if (hasHazard) {
-                        primaryHazard?.roadStatus ?: activeEval?.roadStatus?.label ?: "Blocked"
-                    } else {
-                        "Open / Safe"
-                    },
-                    valueColor = if (hasHazard) RpBlockedRed else RpSafeGreen
-                )
-
-                HazardDetailRow(
-                    label = "Data Source",
-                    value = if (isHardware) {
-                        "LIVE_HARDWARE (ESP32)"
-                    } else {
-                        "VIRTUAL_TEST (TEST DATA — NOT LIVE)"
-                    },
-                    valueColor = if (isHardware) RpPrimaryBlue else RpPurpleAccent
-                )
-            }
-        }
-
-        // Active Hazards Summary List matching Dark Mode Reference Image
-        if (hasHazard && !isHardware) {
+        if (!isAdminMode) {
+            // Simple, Visual Road & Bridge Status Cards for Normal Drivers
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1123,38 +1039,172 @@ fun HazardDetectionScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Active Hazards",
-                        fontSize = 15.sp,
+                        text = "Current Road & Bridge Conditions",
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+
                     ActiveHazardSummaryItem(
-                        title = "Bridge B1 (Critical)",
-                        badgeText = "Blocked",
+                        title = "🌉 Bridge B1 (Main River Bridge)",
+                        badgeText = "CLOSED",
                         badgeColor = RpBlockedRed,
                         icon = Icons.Default.Warning
                     )
+                    Text(
+                        text = "Closed for safety. Do not enter this bridge — app automatically guides you on the safe bypass road.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
                     ActiveHazardSummaryItem(
-                        title = "Road Construction (Warning)",
-                        badgeText = "Restricted",
+                        title = "🚧 Civic Corridor Road",
+                        badgeText = "ROAD WORK",
                         badgeColor = Color(0xFFD97706),
                         icon = Icons.Default.Construction
                     )
-                    ActiveHazardSummaryItem(
-                        title = "Water Level (Warning)",
-                        badgeText = "25 cm",
-                        badgeColor = Color(0xFFD97706),
-                        icon = Icons.Default.WaterDrop
+                    Text(
+                        text = "Construction work in progress. Drive slowly or use the recommended safe route.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+        } else {
+            // Admin Mode: Full Engineering Hazard Attributes Table (Sensors, Values, Data Source)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    HazardDetailRow(
+                        label = "Hazard Type",
+                        value = if (hasHazard) {
+                            primaryHazard?.hazardTitle ?: activeEval?.hazardType?.displayTitle ?: "Bridge Structural"
+                        } else {
+                            "None (Normal)"
+                        }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Severity",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(110.dp)
+                        )
+                        Text(text = ":  ", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SeverityStatusBadge(
+                            severity = if (hasHazard) {
+                                activeEval?.severity ?: HazardSeverity.CRITICAL
+                            } else {
+                                HazardSeverity.SAFE
+                            }
+                        )
+                    }
+
+                    HazardDetailRow(
+                        label = "Sensor",
+                        value = if (hasHazard) {
+                            primaryHazard?.sensorTypesLabel ?: activeEval?.triggeredSensors?.joinToString(", ") ?: "Vibration, Tilt, Strain"
+                        } else {
+                            if (isHardware) "ESP32-001 (No Live Data)" else "Virtual Sensor Array"
+                        }
+                    )
+
+                    HazardDetailRow(
+                        label = "Values",
+                        value = if (hasHazard) {
+                            primaryHazard?.sensorValuesLabel ?: activeEval?.formattedValues ?: "0.85 g, 4.2°, 320 µε"
+                        } else {
+                            if (isHardware) "NO LIVE SENSOR DATA" else "Within Normal Limits"
+                        }
+                    )
+
+                    HazardDetailRow(
+                        label = "Location",
+                        value = if (hasHazard) {
+                            primaryHazard?.roadReference ?: activeEval?.roadReference ?: "Bridge B1 (B - C)"
+                        } else {
+                            "All Corridors Clear"
+                        }
+                    )
+
+                    HazardDetailRow(
+                        label = "Road Status",
+                        value = if (hasHazard) {
+                            primaryHazard?.roadStatus ?: activeEval?.roadStatus?.label ?: "Blocked"
+                        } else {
+                            "Open / Safe"
+                        },
+                        valueColor = if (hasHazard) RpBlockedRed else RpSafeGreen
+                    )
+
+                    HazardDetailRow(
+                        label = "Data Source",
+                        value = if (isHardware) {
+                            "LIVE_HARDWARE (ESP32)"
+                        } else {
+                            "VIRTUAL_TEST (TEST DATA — NOT LIVE)"
+                        },
+                        valueColor = if (isHardware) RpPrimaryBlue else RpPurpleAccent
+                    )
+                }
+            }
+
+            if (hasHazard && !isHardware) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Active Hazards",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        ActiveHazardSummaryItem(
+                            title = "Bridge B1 (Critical)",
+                            badgeText = "Blocked",
+                            badgeColor = RpBlockedRed,
+                            icon = Icons.Default.Warning
+                        )
+                        ActiveHazardSummaryItem(
+                            title = "Road Construction (Warning)",
+                            badgeText = "Restricted",
+                            badgeColor = Color(0xFFD97706),
+                            icon = Icons.Default.Construction
+                        )
+                        ActiveHazardSummaryItem(
+                            title = "Water Level (Warning)",
+                            badgeText = "25 cm",
+                            badgeColor = Color(0xFFD97706),
+                            icon = Icons.Default.WaterDrop
+                        )
+                    }
                 }
             }
         }
 
-        // Bridge Structural Visual Asset matching Reference Image
+        // Bridge Structural Visual Photo
         Card(
             shape = RoundedCornerShape(16.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
@@ -1186,7 +1236,7 @@ fun HazardDetectionScreen(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "View on Map",
+                text = "View Safe Route on Map",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White

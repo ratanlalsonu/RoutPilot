@@ -17,19 +17,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -43,13 +50,18 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.model.AppRole
 import com.example.model.AppScreen
 import com.example.model.SensorMode
 import com.example.ui.components.AutomaticDiversionBanner
@@ -59,7 +71,10 @@ import com.example.ui.components.PersistentModeBanner
 import com.example.ui.components.RoutPilotBottomNavBar
 import com.example.ui.components.RoutPilotTopBar
 import com.example.ui.components.RouteSwitchedConfirmationBanner
+import com.example.ui.screens.AdminControlPanelScreen
+import com.example.ui.screens.AdminLoginDialog
 import com.example.ui.screens.AlgorithmComparisonScreen
+import com.example.ui.screens.CitizenHazardReportDialog
 import com.example.ui.screens.ConnectivityAndDataSourcesScreen
 import com.example.ui.screens.HazardDetectionScreen
 import com.example.ui.screens.HistoryScreen
@@ -71,8 +86,9 @@ import com.example.ui.screens.SensorMonitoringScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.screens.TestScenariosScreen
-import com.example.ui.theme.RpPrimaryBlue
 import com.example.ui.theme.RoutPilotTheme
+import com.example.ui.theme.RpPrimaryBlue
+import com.example.ui.theme.RpPurpleAccent
 import com.example.ui.viewmodel.RoutPilotViewModel
 import kotlinx.coroutines.launch
 
@@ -96,6 +112,11 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
     val isFirstLaunch by viewModel.isFirstLaunch.collectAsStateWithLifecycle()
     val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
+    val activeRole by viewModel.activeRole.collectAsStateWithLifecycle()
+    val showAdminLoginModal by viewModel.showAdminLoginModal.collectAsStateWithLifecycle()
+    val adminEmergencyBroadcast by viewModel.adminEmergencyBroadcast.collectAsStateWithLifecycle()
+    val citizenHazardReports by viewModel.citizenHazardReports.collectAsStateWithLifecycle()
+
     val sensorMode by viewModel.sensorMode.collectAsStateWithLifecycle()
     val pendingModeSwitch by viewModel.pendingModeSwitch.collectAsStateWithLifecycle()
 
@@ -144,6 +165,8 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
     val historyEvents by viewModel.historyEvents.collectAsStateWithLifecycle()
     val matlabSignalAnalysis by viewModel.matlabSignalAnalysis.collectAsStateWithLifecycle()
 
+    var showCitizenReportDialog by remember { mutableStateOf(false) }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -161,10 +184,31 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
         permissionLauncher.launch(perms.toTypedArray())
     }
 
-    // Handle system Back button across all secondary screens
-    BackHandler(enabled = currentScreen != AppScreen.SPLASH && currentScreen != AppScreen.HOME) {
+    val isRootScreen = currentScreen == AppScreen.SPLASH ||
+        currentScreen == AppScreen.HOME ||
+        currentScreen == AppScreen.ADMIN_DASHBOARD
+
+    BackHandler(enabled = !isRootScreen) {
         viewModel.navigateBack()
     }
+
+    // Admin Authority Login Modal
+    AdminLoginDialog(
+        visible = showAdminLoginModal,
+        onAuthenticate = { adminId, pin -> viewModel.authenticateAdmin(adminId, pin) },
+        onQuickDemoLogin = { viewModel.quickDemoAdminLogin() },
+        onDismiss = { viewModel.dismissAdminLoginModal() }
+    )
+
+    // Citizen Hazard Reporting Modal (From User Panel -> Admin Panel)
+    CitizenHazardReportDialog(
+        visible = showCitizenReportDialog,
+        edges = graphEdges,
+        onSubmitReport = { edgeId, roadName, hazardType, severity, description ->
+            viewModel.submitCitizenHazardReport(edgeId, roadName, hazardType, severity, description)
+        },
+        onDismiss = { showCitizenReportDialog = false }
+    )
 
     // Mode Switch Safety Confirmation Dialog
     ModeSwitchConfirmDialog(
@@ -173,9 +217,12 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
         onDismiss = { viewModel.cancelModeSwitch() }
     )
 
+    val isAdminRole = activeRole == AppRole.ADMIN_PANEL
+
     // In-App APK Hazard Notification Modal with Other Optimal Safe Route Options
     HazardRouteNotificationModal(
         state = hazardRouteNotification,
+        isAdminMode = isAdminRole,
         onSelectSafeRoute = { chosenSafeRoute ->
             viewModel.selectOtherOptimalSafeRoute(chosenSafeRoute)
         },
@@ -190,6 +237,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
             isDarkTheme = isDarkTheme,
             onToggleTheme = { viewModel.setDarkTheme(it) },
             onGetStarted = { viewModel.completeSplashAndOpenHome() },
+            onAdminPortalClick = { viewModel.requestAdminPanelFromSplashOrApp() },
             onSkip = { viewModel.completeSplashAndOpenHome() }
         )
         return
@@ -198,24 +246,32 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    val drawerItems = listOf(
-        Triple("Home Dashboard", Icons.Default.Home, AppScreen.HOME),
-        Triple("Live Map", Icons.Default.Map, AppScreen.LIVE_MAP),
-        Triple("Route Planner", Icons.Default.AltRoute, AppScreen.ROUTE_PLANNER),
-        Triple("Sensor Monitoring", Icons.Default.Sensors, AppScreen.SENSORS),
-        Triple("Hazard Detection", Icons.Default.Warning, AppScreen.HAZARD_DETECTION),
-        Triple("A* vs Dijkstra", Icons.Default.CompareArrows, AppScreen.ALGORITHM_COMPARISON),
-        Triple("Journey Tracking", Icons.Default.Navigation, AppScreen.JOURNEY_TRACKING),
-        Triple("Virtual Test Scenarios", Icons.Default.PlayCircleFilled, AppScreen.TEST_SCENARIOS),
-        Triple("Event & Route History", Icons.Default.History, AppScreen.HISTORY),
-        Triple("Connectivity & MATLAB", Icons.Default.Wifi, AppScreen.CONNECTIVITY),
-        Triple("Data Sources", Icons.Default.Storage, AppScreen.DATA_SOURCES),
-        Triple("Settings", Icons.Default.Settings, AppScreen.SETTINGS)
-    )
+    val drawerItems = if (isAdminRole) {
+        listOf(
+            Triple("Admin Control Center", Icons.Default.AdminPanelSettings, AppScreen.ADMIN_DASHBOARD),
+            Triple("Live Network Map", Icons.Default.Map, AppScreen.LIVE_MAP),
+            Triple("Sensor Telemetry (ESP32)", Icons.Default.Sensors, AppScreen.SENSORS),
+            Triple("Virtual Test Scenarios", Icons.Default.PlayCircleFilled, AppScreen.TEST_SCENARIOS),
+            Triple("A* vs Dijkstra Lab", Icons.Default.CompareArrows, AppScreen.ALGORITHM_COMPARISON),
+            Triple("Connectivity & MATLAB", Icons.Default.Wifi, AppScreen.CONNECTIVITY),
+            Triple("Data Sources & Storage", Icons.Default.Storage, AppScreen.DATA_SOURCES),
+            Triple("Admin Threshold Settings", Icons.Default.Settings, AppScreen.SETTINGS)
+        )
+    } else {
+        listOf(
+            Triple("Home", Icons.Default.Home, AppScreen.HOME),
+            Triple("Live Map", Icons.Default.Map, AppScreen.LIVE_MAP),
+            Triple("Find Route", Icons.Default.AltRoute, AppScreen.ROUTE_PLANNER),
+            Triple("Start Navigation", Icons.Default.Navigation, AppScreen.JOURNEY_TRACKING),
+            Triple("Road & Bridge Alerts", Icons.Default.Warning, AppScreen.HAZARD_DETECTION),
+            Triple("Recent Trips", Icons.Default.History, AppScreen.HISTORY),
+            Triple("Settings", Icons.Default.Settings, AppScreen.SETTINGS)
+        )
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = currentScreen == AppScreen.HOME,
+        gesturesEnabled = currentScreen == AppScreen.HOME || currentScreen == AppScreen.ADMIN_DASHBOARD,
         drawerContent = {
             ModalDrawerSheet(modifier = Modifier.fillMaxWidth(0.78f)) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -223,20 +279,27 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                         text = "RoutePilot",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = RpPrimaryBlue
+                        color = if (isAdminRole) RpPurpleAccent else RpPrimaryBlue
                     )
                     Text(
-                        text = "Real-Time Road & Bridge Hazard Detection",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Mode: ${sensorMode.displayTitle}",
-                        fontSize = 11.sp,
+                        text = if (isAdminRole) {
+                            "🛡️ Traffic Authority Admin Panel"
+                        } else {
+                            "Smart Road & Bridge Navigation"
+                        },
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (isAdminRole) RpPurpleAccent else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (isAdminRole) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Mode: ${sensorMode.displayTitle}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(6.dp))
@@ -252,24 +315,59 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
+
+                if (isAdminRole) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Button(
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                viewModel.switchToUserPanel()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = RpPrimaryBlue),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Return to Driver App",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
             }
         }
     ) {
         val screenTitle = when (currentScreen) {
             AppScreen.HOME -> "RoutePilot"
+            AppScreen.ADMIN_DASHBOARD -> "Admin Control Panel"
             AppScreen.LIVE_MAP -> "Live Map"
-            AppScreen.ROUTE_PLANNER -> "Route Planner"
+            AppScreen.ROUTE_PLANNER -> if (isAdminRole) "Route Planner" else "Find Safe Route"
             AppScreen.SENSORS -> "Sensor Monitoring"
-            AppScreen.HAZARD_DETECTION -> "Hazard Detection"
+            AppScreen.HAZARD_DETECTION -> if (isAdminRole) "Hazard Alerts" else "Road & Bridge Alerts"
             AppScreen.ALGORITHM_COMPARISON -> "A* vs Dijkstra"
-            AppScreen.JOURNEY_TRACKING -> "Journey Tracking"
+            AppScreen.JOURNEY_TRACKING -> if (isAdminRole) "Journey Tracking" else "Live Navigation"
             AppScreen.TEST_SCENARIOS -> "Test Scenarios"
-            AppScreen.SETTINGS -> "Settings"
-            AppScreen.HISTORY -> "History"
+            AppScreen.SETTINGS -> if (isAdminRole) "Admin Settings" else "Settings"
+            AppScreen.HISTORY -> if (isAdminRole) "Event History" else "Recent Trips"
             AppScreen.CONNECTIVITY -> "Connectivity & System"
             AppScreen.DATA_SOURCES -> "Data Sources & MATLAB"
             AppScreen.SPLASH -> "RoutePilot"
         }
+
+        val showHamburgerIcon = currentScreen == AppScreen.HOME || currentScreen == AppScreen.ADMIN_DASHBOARD
 
         Scaffold(
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -277,12 +375,18 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                 Column {
                     RoutPilotTopBar(
                         title = screenTitle,
-                        isHome = currentScreen == AppScreen.HOME,
+                        isHome = showHamburgerIcon,
                         activeHazardCount = activeModeHazards.size,
+                        activeRole = activeRole,
                         isDarkTheme = isDarkTheme,
                         onToggleTheme = { viewModel.setDarkTheme(!isDarkTheme) },
+                        onToggleRoleClick = {
+                            if (activeRole == AppRole.ADMIN_PANEL) {
+                                viewModel.switchToUserPanel()
+                            }
+                        },
                         onMenuOrBackClick = {
-                            if (currentScreen == AppScreen.HOME) {
+                            if (showHamburgerIcon) {
                                 scope.launch { drawerState.open() }
                             } else {
                                 viewModel.navigateBack()
@@ -292,7 +396,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                             viewModel.triggerHazardNotificationOnRoute()
                         }
                     )
-                    if (currentScreen != AppScreen.LIVE_MAP) {
+                    if (isAdminRole && currentScreen != AppScreen.LIVE_MAP) {
                         PersistentModeBanner(
                             sensorMode = sensorMode,
                             esp32State = connectivity.esp32State,
@@ -304,6 +408,8 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                                 viewModel.requestModeSwitch(targetMode)
                             }
                         )
+                    }
+                    if (currentScreen != AppScreen.LIVE_MAP) {
                         RouteSwitchedConfirmationBanner(
                             notificationState = hazardRouteNotification,
                             onReopenRouteChoices = { viewModel.triggerHazardNotificationOnRoute() }
@@ -312,6 +418,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                     if (currentScreen in setOf(AppScreen.ROUTE_PLANNER, AppScreen.JOURNEY_TRACKING)) {
                         AutomaticDiversionBanner(
                             diversion = diversionAlert,
+                            isAdminMode = isAdminRole,
                             onViewMapClick = { viewModel.navigateTo(AppScreen.LIVE_MAP) }
                         )
                     }
@@ -320,6 +427,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
             bottomBar = {
                 RoutPilotBottomNavBar(
                     currentScreen = currentScreen,
+                    activeRole = activeRole,
                     onNavigate = { target -> viewModel.navigateTo(target) }
                 )
             }
@@ -355,8 +463,34 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                             activeRoute = activeRouteResult,
                             gpsState = gpsState,
                             isDarkTheme = isDarkTheme,
+                            emergencyBroadcast = adminEmergencyBroadcast,
+                            onOpenCitizenReport = { showCitizenReportDialog = true },
+                            onOpenAdminPanel = { viewModel.requestAdminPanelFromSplashOrApp() },
+                            onQuickSelectDestination = { destNodeId ->
+                                viewModel.setDestinationNode(destNodeId)
+                                viewModel.calculateSelectedRoute(recordInDb = true)
+                            },
                             onNavigate = { viewModel.navigateTo(it) },
                             onRequestModeSwitch = { viewModel.requestModeSwitch(it) }
+                        )
+                    }
+                    AppScreen.ADMIN_DASHBOARD -> {
+                        AdminControlPanelScreen(
+                            edges = graphEdges,
+                            activeRoute = activeRouteResult,
+                            sensorMode = sensorMode,
+                            emergencyBroadcast = adminEmergencyBroadcast,
+                            citizenReports = citizenHazardReports,
+                            onSetRoadStatusOverride = { edgeId, status, reason ->
+                                viewModel.setAdminRoadStatusOverride(edgeId, status, reason)
+                            },
+                            onResetAllRoadOverrides = { viewModel.clearAllAdminRoadOverrides() },
+                            onUpdateEmergencyBroadcast = { viewModel.updateAdminEmergencyBroadcast(it) },
+                            onVerifyCitizenReport = { viewModel.verifyAndBlockCitizenReport(it) },
+                            onResolveCitizenReport = { viewModel.resolveCitizenReport(it) },
+                            onSwitchToUserPanel = { viewModel.switchToUserPanel() },
+                            onLogoutAdmin = { viewModel.logoutAdmin() },
+                            onNavigate = { viewModel.navigateTo(it) }
                         )
                     }
                     AppScreen.LIVE_MAP -> {
@@ -372,6 +506,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                             externalOsrmGeometry = externalOsrmRoute?.geometry ?: emptyList(),
                             currentVehicleNodeId = currentVehicleNode,
                             isDarkTheme = isDarkTheme,
+                            isAdminMode = isAdminRole,
                             onRequestLocationPermission = {
                                 permissionLauncher.launch(
                                     arrayOf(
@@ -404,6 +539,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                             placeSearchResults = placeSearchResults,
                             isSearchingPlaces = isSearchingPlaces,
                             selectedCustomPlace = selectedCustomPlace,
+                            isAdminMode = isAdminRole,
                             onSelectSource = { viewModel.setSourceNode(it) },
                             onSelectDestination = { viewModel.setDestinationNode(it) },
                             onSelectVehicle = { viewModel.setVehicleType(it) },
@@ -448,6 +584,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                             sensorMode = sensorMode,
                             activeHazards = activeModeHazards,
                             activeEval = activeEval,
+                            isAdminMode = isAdminRole,
                             onViewOnMap = { viewModel.navigateTo(AppScreen.LIVE_MAP) }
                         )
                     }
@@ -472,6 +609,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                             journeyStatus = journeyStatus,
                             journeyNodeIndex = journeyNodeIndex,
                             isDarkTheme = isDarkTheme,
+                            isAdminMode = isAdminRole,
                             onPauseResumeJourney = { viewModel.pauseJourney() },
                             onStopJourney = { viewModel.stopJourney() },
                             onAdvanceCheckpoint = { viewModel.stepJourneyForward() },
@@ -497,17 +635,25 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
                             hardwareConfig = hardwareConfig,
                             hardwareTestResult = hardwareTestResult,
                             isDarkTheme = isDarkTheme,
+                            isAdminMode = isAdminRole,
+                            selectedVehicle = selectedVehicle,
+                            onSelectVehicle = { viewModel.setVehicleType(it) },
+                            onOpenCitizenReport = { showCitizenReportDialog = true },
+                            onOpenHistory = { viewModel.navigateTo(AppScreen.HISTORY) },
+                            onOpenAdminLogin = { viewModel.requestAdminPanelFromSplashOrApp() },
+                            onExitAdminMode = { viewModel.switchToUserPanel() },
                             onUpdateWeights = { viewModel.updateRouteWeights(it) },
                             onSaveHardwareConfig = { viewModel.saveHardwareConfiguration(it) },
                             onTestHardwareConnection = { viewModel.testHardwareConnection(it) },
                             onRequestModeSwitch = { viewModel.requestModeSwitch(it) },
                             onToggleDarkTheme = { viewModel.setDarkTheme(it) },
-                            onSaveAndReturn = { viewModel.navigateTo(AppScreen.HOME) }
+                            onSaveAndReturn = { viewModel.navigateTo(AppScreen.ADMIN_DASHBOARD) }
                         )
                     }
                     AppScreen.HISTORY -> {
                         HistoryScreen(
                             events = historyEvents,
+                            isAdminMode = isAdminRole,
                             onNavigate = { viewModel.navigateTo(it) }
                         )
                     }
