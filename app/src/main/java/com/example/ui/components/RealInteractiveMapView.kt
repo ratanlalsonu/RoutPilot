@@ -84,19 +84,53 @@ import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Overlay
 
+enum class MapVisualStyle(val label: String) {
+    STREET("Street"),
+    DARK("Dark"),
+    SATELLITE("Satellite")
+}
+
+private val CARTO_DARK_TILE_SOURCE: OnlineTileSourceBase = XYTileSource(
+    "CartoDarkMatter",
+    1,
+    20,
+    256,
+    ".png",
+    arrayOf(
+        "https://a.basemaps.cartocdn.com/dark_all/",
+        "https://b.basemaps.cartocdn.com/dark_all/",
+        "https://c.basemaps.cartocdn.com/dark_all/"
+    )
+)
+
+private val ESRI_SATELLITE_TILE_SOURCE: OnlineTileSourceBase = object : OnlineTileSourceBase(
+    "EsriWorldImagery",
+    1,
+    19,
+    256,
+    ".jpg",
+    arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        val zoom = MapTileIndex.getZoom(pMapTileIndex)
+        val y = MapTileIndex.getY(pMapTileIndex)
+        val x = MapTileIndex.getX(pMapTileIndex)
+        return "$baseUrl$zoom/$y/$x"
+    }
+}
+
 /**
- * Full Native Interactive OpenStreetMap (`org.osmdroid.views.MapView`) Component.
- *
- * - Renders a clean, unobstructed OpenStreetMap viewport.
- * - Highlights the selected Optimal Path from Source to Destination with bold casing and directional arrows.
- * - Geo-anchors every Bridge, Road Construction site, and Hazard directly at its exact GPS latitude/longitude
- *   location on the map.
+ * Full Native Interactive OpenStreetMap (`org.osmdroid.views.MapView`) Component with
+ * authentic Street, Dark Night, and Satellite Imagery modes.
  */
 @Composable
 fun RealInteractiveMapView(
@@ -130,9 +164,20 @@ fun RealInteractiveMapView(
 
     var showRoadLayer by remember { mutableStateOf(true) }
     var currentZoomLevel by remember { mutableDoubleStateOf(13.3) }
+    var mapStyle by remember { mutableStateOf(if (isDarkTheme) MapVisualStyle.DARK else MapVisualStyle.STREET) }
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
 
-    // Calculate center of the active Optimal Path so the full Source-to-Destination path & hazards are centered
+    // Automatically sync map style when the user toggles the app's Dark Mode button
+    LaunchedEffect(isDarkTheme) {
+        if (isDarkTheme && mapStyle == MapVisualStyle.STREET) {
+            mapStyle = MapVisualStyle.DARK
+        } else if (!isDarkTheme && mapStyle == MapVisualStyle.DARK) {
+            mapStyle = MapVisualStyle.STREET
+        }
+    }
+
+    val isNightOrSatellite = mapStyle == MapVisualStyle.DARK || mapStyle == MapVisualStyle.SATELLITE || isDarkTheme
+
     val routeNodes = remember(activeRoute, nodes) {
         val pathIds = activeRoute?.nodePath ?: emptyList()
         if (pathIds.isNotEmpty()) {
@@ -167,11 +212,11 @@ fun RealInteractiveMapView(
     geoOverlay.externalOsrmGeometry = externalOsrmGeometry
     geoOverlay.currentVehicleNodeId = currentVehicleNodeId
     geoOverlay.showRoadLayer = showRoadLayer
-    geoOverlay.isDarkTheme = isDarkTheme
+    geoOverlay.isDarkTheme = isNightOrSatellite
+    geoOverlay.mapVisualStyle = mapStyle
     geoOverlay.onNodeClick = onNodeClick
     geoOverlay.onHazardClick = onHazardMarkerClick
 
-    // Automatically center on the active optimal path whenever the selected optimal route changes
     LaunchedEffect(activeRoute?.nodePath) {
         if (routeNodes.isNotEmpty()) {
             val avgLat = routeNodes.map { it.latitude }.average()
@@ -203,18 +248,46 @@ fun RealInteractiveMapView(
         }
     }
 
+    val mapBgColor = when (mapStyle) {
+        MapVisualStyle.DARK -> Color(0xFF070E1B)
+        MapVisualStyle.SATELLITE -> Color(0xFF0A1914)
+        MapVisualStyle.STREET -> if (isDarkTheme) Color(0xFF070E1B) else Color(0xFFE8F1E5)
+    }
+
+    val controlSurfaceColor = if (isNightOrSatellite) {
+        Color(0xFF0F172A).copy(alpha = 0.94f)
+    } else {
+        Color.White.copy(alpha = 0.94f)
+    }
+    val controlBorderColor = if (isNightOrSatellite) {
+        Color(0xFF334155)
+    } else {
+        Color(0xFFCBD5E1)
+    }
+    val controlIconTint = if (isNightOrSatellite) {
+        Color(0xFFF8FAFC)
+    } else {
+        Color(0xFF0F172A)
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .clipToBounds()
-            .background(if (isDarkTheme) Color(0xFF0B1526) else Color(0xFFE8F1E5))
+            .background(mapBgColor)
     ) {
         // 1. Full-Screen Native Interactive osmdroid MapView
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 MapView(ctx).apply {
-                    setTileSource(TileSourceFactory.MAPNIK)
+                    setTileSource(
+                        when (mapStyle) {
+                            MapVisualStyle.SATELLITE -> ESRI_SATELLITE_TILE_SOURCE
+                            MapVisualStyle.DARK -> CARTO_DARK_TILE_SOURCE
+                            MapVisualStyle.STREET -> TileSourceFactory.MAPNIK
+                        }
+                    )
                     setMultiTouchControls(true)
                     isTilesScaledToDpi = true
                     minZoomLevel = 4.0
@@ -241,18 +314,78 @@ fun RealInteractiveMapView(
                 }
             },
             update = { mapView ->
-                if (isDarkTheme) {
-                    val darkMatrix = ColorMatrix(
-                        floatArrayOf(
-                            -0.85f, 0f, 0f, 0f, 225f,
-                            0f, -0.82f, 0f, 0f, 235f,
-                            0f, 0f, -0.72f, 0f, 250f,
-                            0f, 0f, 0f, 1f, 0f
+                val desiredSource = when (mapStyle) {
+                    MapVisualStyle.SATELLITE -> ESRI_SATELLITE_TILE_SOURCE
+                    MapVisualStyle.DARK -> CARTO_DARK_TILE_SOURCE
+                    MapVisualStyle.STREET -> TileSourceFactory.MAPNIK
+                }
+                if (mapView.tileProvider.tileSource.name() != desiredSource.name()) {
+                    mapView.setTileSource(desiredSource)
+                }
+
+                // Configure tile loading background & color filter so Dark and Satellite modes look deep & authentic
+                when (mapStyle) {
+                    MapVisualStyle.DARK -> {
+                        mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
+                            android.graphics.Color.rgb(7, 14, 27)
+                        mapView.overlayManager.tilesOverlay.loadingLineColor =
+                            android.graphics.Color.rgb(18, 31, 53)
+                        // Slight contrast boost for Carto Dark Matter tiles
+                        val nightContrastMatrix = ColorMatrix(
+                            floatArrayOf(
+                                1.12f, 0f, 0f, 0f, -4f,
+                                0f, 1.15f, 0f, 0f, 2f,
+                                0f, 0f, 1.25f, 0f, 10f,
+                                0f, 0f, 0f, 1f, 0f
+                            )
                         )
-                    )
-                    mapView.overlayManager.tilesOverlay.setColorFilter(ColorMatrixColorFilter(darkMatrix))
-                } else {
-                    mapView.overlayManager.tilesOverlay.setColorFilter(null)
+                        mapView.overlayManager.tilesOverlay.setColorFilter(
+                            ColorMatrixColorFilter(nightContrastMatrix)
+                        )
+                    }
+                    MapVisualStyle.SATELLITE -> {
+                        mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
+                            android.graphics.Color.rgb(10, 24, 19)
+                        mapView.overlayManager.tilesOverlay.loadingLineColor =
+                            android.graphics.Color.rgb(20, 44, 36)
+                        // Rich satellite imagery contrast enhancement
+                        val satMatrix = ColorMatrix(
+                            floatArrayOf(
+                                1.08f, 0f, 0f, 0f, -6f,
+                                0f, 1.10f, 0f, 0f, -4f,
+                                0f, 0f, 1.08f, 0f, -4f,
+                                0f, 0f, 0f, 1f, 0f
+                            )
+                        )
+                        mapView.overlayManager.tilesOverlay.setColorFilter(
+                            ColorMatrixColorFilter(satMatrix)
+                        )
+                    }
+                    MapVisualStyle.STREET -> {
+                        if (isDarkTheme) {
+                            mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
+                                android.graphics.Color.rgb(7, 14, 27)
+                            mapView.overlayManager.tilesOverlay.loadingLineColor =
+                                android.graphics.Color.rgb(18, 31, 53)
+                            val darkStreetMatrix = ColorMatrix(
+                                floatArrayOf(
+                                    -0.75f, 0f, 0f, 0f, 200f,
+                                    0f, -0.72f, 0f, 0f, 212f,
+                                    0f, 0f, -0.58f, 0f, 232f,
+                                    0f, 0f, 0f, 1f, 0f
+                                )
+                            )
+                            mapView.overlayManager.tilesOverlay.setColorFilter(
+                                ColorMatrixColorFilter(darkStreetMatrix)
+                            )
+                        } else {
+                            mapView.overlayManager.tilesOverlay.loadingBackgroundColor =
+                                android.graphics.Color.rgb(232, 241, 229)
+                            mapView.overlayManager.tilesOverlay.loadingLineColor =
+                                android.graphics.Color.rgb(203, 213, 225)
+                            mapView.overlayManager.tilesOverlay.setColorFilter(null)
+                        }
+                    }
                 }
 
                 if (!mapView.overlays.contains(geoOverlay)) {
@@ -262,8 +395,47 @@ fun RealInteractiveMapView(
             }
         )
 
-        // 2. Compact Bottom-Left Map Controls (Zoom +/-, Recenter on Optimal Path, Layer Toggle)
         if (showControls) {
+            // 2. Compact Map Mode Switcher (Street | Dark | Satellite) at Top-End below the path bar
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 58.dp, end = 10.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = controlSurfaceColor,
+                shadowElevation = 5.dp,
+                border = BorderStroke(1.dp, controlBorderColor)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MapVisualStyle.entries.forEach { style ->
+                        val selected = mapStyle == style
+                        Surface(
+                            shape = RoundedCornerShape(7.dp),
+                            color = if (selected) RpPrimaryBlue else Color.Transparent,
+                            modifier = Modifier
+                                .clickable {
+                                    mapStyle = style
+                                    mapViewRef.value?.invalidate()
+                                }
+                                .testTag("map_style_${style.name.lowercase()}")
+                        ) {
+                            Text(
+                                text = style.label,
+                                fontSize = 10.sp,
+                                fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                color = if (selected) Color.White else controlIconTint,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3. Compact Bottom-Left Map Controls (Zoom +/-, Recenter on Optimal Path, Layer Toggle)
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -272,9 +444,9 @@ fun RealInteractiveMapView(
             ) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color.White.copy(alpha = 0.94f),
+                    color = controlSurfaceColor,
                     shadowElevation = 4.dp,
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                    border = BorderStroke(1.dp, controlBorderColor)
                 ) {
                     Column {
                         IconButton(
@@ -283,7 +455,7 @@ fun RealInteractiveMapView(
                                 .size(38.dp)
                                 .testTag("map_zoom_in_button")
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Zoom in", tint = Color(0xFF0F172A))
+                            Icon(Icons.Default.Add, contentDescription = "Zoom in", tint = controlIconTint)
                         }
                         IconButton(
                             onClick = { mapViewRef.value?.controller?.zoomOut() },
@@ -291,16 +463,16 @@ fun RealInteractiveMapView(
                                 .size(38.dp)
                                 .testTag("map_zoom_out_button")
                         ) {
-                            Icon(Icons.Default.Remove, contentDescription = "Zoom out", tint = Color(0xFF0F172A))
+                            Icon(Icons.Default.Remove, contentDescription = "Zoom out", tint = controlIconTint)
                         }
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color.White.copy(alpha = 0.94f),
+                    color = controlSurfaceColor,
                     shadowElevation = 4.dp,
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                    border = BorderStroke(1.dp, controlBorderColor)
                 ) {
                     Column {
                         IconButton(
@@ -312,7 +484,11 @@ fun RealInteractiveMapView(
                                 .size(38.dp)
                                 .testTag("map_recenter_button")
                         ) {
-                            Icon(Icons.Default.MyLocation, contentDescription = "Center Optimal Path", tint = RpPrimaryBlue)
+                            Icon(
+                                Icons.Default.MyLocation,
+                                contentDescription = "Center Optimal Path",
+                                tint = if (isNightOrSatellite) Color(0xFF38BDF8) else RpPrimaryBlue
+                            )
                         }
                         IconButton(
                             onClick = {
@@ -326,22 +502,26 @@ fun RealInteractiveMapView(
                             Icon(
                                 imageVector = Icons.Default.Layers,
                                 contentDescription = "Toggle Background Network Layer",
-                                tint = if (showRoadLayer) RpPrimaryBlue else Color(0xFF64748B)
+                                tint = if (showRoadLayer) {
+                                    if (isNightOrSatellite) Color(0xFF38BDF8) else RpPrimaryBlue
+                                } else {
+                                    Color(0xFF64748B)
+                                }
                             )
                         }
                     }
                 }
             }
 
-            // 3. Compact Bottom-Right Legend & Quick-Pan Chips (Tap to center on Bridge B1 or Road Construction)
+            // 4. Compact Bottom-Right Legend & Quick-Pan Chips (Tap to center on Bridge B1 or Road Construction)
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(10.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = Color.White.copy(alpha = 0.94f),
+                color = controlSurfaceColor,
                 shadowElevation = 4.dp,
-                border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                border = BorderStroke(1.dp, controlBorderColor)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
@@ -377,7 +557,7 @@ fun RealInteractiveMapView(
                             text = "Bridge Hazard",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = RpBlockedRed
+                            color = if (isNightOrSatellite) Color(0xFFFCA5A5) else RpBlockedRed
                         )
                     }
 
@@ -410,17 +590,17 @@ fun RealInteractiveMapView(
                             text = "Road Work",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFB45309)
+                            color = if (isNightOrSatellite) Color(0xFFFCD34D) else Color(0xFFB45309)
                         )
                     }
 
                     val scaleKm = (40000.0 / 2.0.pow(currentZoomLevel) * 0.15).coerceAtLeast(0.1)
-                    val scaleLabel = if (scaleKm >= 1.0) "${scaleKm.roundToInt()} km" else "${(scaleKm * 1000).roundToInt()} m"
+                    val scaleLabel = if (scaleKm >= 1.0) "${scaleKm.roundToInt()} km" else "${(scaleKm * 1000).roundToInt()}" + " m"
                     Text(
                         text = "• $scaleLabel",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
+                        color = if (isNightOrSatellite) Color(0xFF94A3B8) else Color(0xFF475569)
                     )
                 }
             }
@@ -429,14 +609,15 @@ fun RealInteractiveMapView(
 }
 
 /**
- * Custom `org.osmdroid.views.overlay.Overlay` that draws:
- * 1. The active Optimal Path from Source to Destination with high-contrast white casing, bold route line,
+ * Custom `org.osmdroid.views.overlay.Overlay` that renders:
+ * 1. Authentic Dark / Satellite waterway & terrain corridor cues when in Dark or Satellite mode.
+ * 2. The active Optimal Path from Source to Destination with glowing dark/satellite halo, bold route line,
  *    and directional arrows (`➤`).
- * 2. Exact Geo-Anchored Markers & Pointer Callout Badges at the exact GPS location (`GeoPoint`) of:
- *    - Any Bridge on the Optimal Path or corridor (`🌉 Bridge B1`, `🌉 South Bridge H-P`, `🌉 East Viaduct C-F`, `🌉 Causeway Q-R`)
+ * 3. Exact Geo-Anchored Markers & Pointer Callout Badges at the exact GPS location (`GeoPoint`) of:
+ *    - Any Bridge on the Optimal Path or corridor (`🌉 Bridge B1`, `🌉 South Plaza Bridge H-P`, `🌉 East Viaduct C-F`, `🌉 Causeway Q-R`)
  *    - Any Road Construction site on the Optimal Path or corridor (`🚧 Road Construction H-I`)
  *    - Any Active Hazard on the Optimal Path or corridor (`⚠ CRITICAL HAZARD`, `⚠ WARNING`)
- *    - Source (`🟢 START`) and Destination (`🏁 DEST`) pins
+ *    - Source (`START`) and Destination (`DEST`) pins
  */
 private class RoutPilotOsmGeoOverlay : Overlay() {
     var nodes: List<RoadNode> = emptyList()
@@ -450,8 +631,21 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
     var currentVehicleNodeId: String = "H"
     var showRoadLayer: Boolean = true
     var isDarkTheme: Boolean = false
+    var mapVisualStyle: MapVisualStyle = MapVisualStyle.STREET
     var onNodeClick: (RoadNode) -> Unit = {}
     var onHazardClick: (HazardEntity?) -> Unit = {}
+
+    private val riverWaterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private val riverBankPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
 
     private val bgEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -459,19 +653,24 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         strokeJoin = Paint.Join.ROUND
     }
 
+    private val routeGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = 30f
+    }
+
     private val routeCasingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        color = android.graphics.Color.WHITE
-        strokeWidth = 22f
+        strokeWidth = 21f
     }
 
     private val routePrimaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        color = android.graphics.Color.rgb(37, 99, 235) // RpPrimaryBlue
         strokeWidth = 13f
     }
 
@@ -486,7 +685,6 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-        color = android.graphics.Color.argb(170, 100, 116, 139)
         strokeWidth = 8f
         pathEffect = DashPathEffect(floatArrayOf(18f, 14f), 0f)
     }
@@ -521,12 +719,10 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
 
     private val gpsHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = android.graphics.Color.argb(60, 37, 99, 235)
     }
 
     private val gpsDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = android.graphics.Color.rgb(37, 99, 235)
     }
 
     private val hazardPulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -535,24 +731,23 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
 
     private val calloutBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = android.graphics.Color.argb(248, 255, 255, 255)
     }
 
     private val calloutBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 4f
+        strokeWidth = 3.5f
     }
 
     private val calloutTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textSize = 20f
+        textSize = 19f
     }
 
     private val calloutSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textSize = 16f
+        textSize = 14f
     }
 
     override fun draw(canvas: android.graphics.Canvas, mapView: MapView, shadow: Boolean) {
@@ -562,8 +757,53 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         val pt1 = Point()
         val pt2 = Point()
 
+        val isNightOrSat = isDarkTheme || mapVisualStyle == MapVisualStyle.DARK || mapVisualStyle == MapVisualStyle.SATELLITE
+
+        // 0. Draw subtle geo-anchored River Channel passing under the bridges (B-C, H-P, Q-R) so Bridges are visually unmistakable in Dark & Satellite modes
+        val bNode = nodeMap["B"]
+        val cNode = nodeMap["C"]
+        val hNode = nodeMap["H"]
+        val pNode = nodeMap["P"]
+        val qNode = nodeMap["Q"]
+        val rNode = nodeMap["R"]
+        if (bNode != null && cNode != null && hNode != null && pNode != null && qNode != null && rNode != null) {
+            val riverPath = Path()
+            val northLat = (bNode.latitude + cNode.latitude) / 2.0 + 0.015
+            val northLon = (bNode.longitude + cNode.longitude) / 2.0 - 0.004
+            val bcLat = (bNode.latitude + cNode.latitude) / 2.0
+            val bcLon = (bNode.longitude + cNode.longitude) / 2.0
+            val hpLat = (hNode.latitude + pNode.latitude) / 2.0
+            val hpLon = (hNode.longitude + pNode.longitude) / 2.0
+            val qrLat = (qNode.latitude + rNode.latitude) / 2.0
+            val qrLon = (qNode.longitude + rNode.longitude) / 2.0
+
+            projection.toPixels(GeoPoint(northLat, northLon), pt1)
+            riverPath.moveTo(pt1.x.toFloat(), pt1.y.toFloat())
+            projection.toPixels(GeoPoint(bcLat, bcLon), pt1)
+            riverPath.lineTo(pt1.x.toFloat(), pt1.y.toFloat())
+            projection.toPixels(GeoPoint(hpLat, hpLon), pt1)
+            riverPath.lineTo(pt1.x.toFloat(), pt1.y.toFloat())
+            projection.toPixels(GeoPoint(qrLat, qrLon), pt1)
+            riverPath.lineTo(pt1.x.toFloat(), pt1.y.toFloat())
+
+            riverBankPaint.strokeWidth = 42f
+            riverBankPaint.color = when {
+                mapVisualStyle == MapVisualStyle.SATELLITE -> android.graphics.Color.argb(110, 6, 78, 59)
+                isNightOrSat -> android.graphics.Color.argb(120, 14, 116, 144)
+                else -> android.graphics.Color.argb(95, 56, 189, 248)
+            }
+            canvas.drawPath(riverPath, riverBankPaint)
+
+            riverWaterPaint.strokeWidth = 28f
+            riverWaterPaint.color = when {
+                mapVisualStyle == MapVisualStyle.SATELLITE -> android.graphics.Color.argb(175, 8, 47, 73)
+                isNightOrSat -> android.graphics.Color.argb(185, 12, 74, 110)
+                else -> android.graphics.Color.argb(145, 14, 165, 233)
+            }
+            canvas.drawPath(riverPath, riverWaterPaint)
+        }
+
         val primaryPath = activeRoute?.nodePath ?: emptyList()
-        // Collect the set of undirected edge keys on the active Optimal Path
         val activePathEdgePairs = mutableSetOf<Pair<String, String>>()
         for (i in 0 until primaryPath.size - 1) {
             activePathEdgePairs.add(primaryPath[i] to primaryPath[i + 1])
@@ -584,7 +824,7 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
             canvas.drawPath(osrmPath, osrmPaint)
         }
 
-        // 2. Draw Road & Bridge Network Links (Subtle for non-route safe edges, Bold for Hazard / Construction / Bridge edges)
+        // 2. Draw Road & Bridge Network Links
         edges.forEach { edge ->
             val nFrom = nodeMap[edge.fromNodeId] ?: return@forEach
             val nTo = nodeMap[edge.toNodeId] ?: return@forEach
@@ -606,44 +846,63 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
 
             projection.toPixels(GeoPoint(nFrom.latitude, nFrom.longitude), pt1)
             projection.toPixels(GeoPoint(nTo.latitude, nTo.longitude), pt2)
+            val x1 = pt1.x.toFloat()
+            val y1 = pt1.y.toFloat()
+            val x2 = pt2.x.toFloat()
+            val y2 = pt2.y.toFloat()
 
             when {
                 isBlockedOrCritical -> {
-                    // Draw white casing + bold red hazard line at exact location
-                    bgEdgePaint.color = android.graphics.Color.WHITE
-                    bgEdgePaint.strokeWidth = 16f
+                    // Glowing Red Halo + Bold Red Hazard Line at exact location
+                    bgEdgePaint.color = if (isNightOrSat) {
+                        android.graphics.Color.argb(120, 239, 68, 68)
+                    } else {
+                        android.graphics.Color.WHITE
+                    }
+                    bgEdgePaint.strokeWidth = if (isNightOrSat) 22f else 16f
                     bgEdgePaint.pathEffect = null
-                    canvas.drawLine(pt1.x.toFloat(), pt1.y.toFloat(), pt2.x.toFloat(), pt2.y.toFloat(), bgEdgePaint)
+                    canvas.drawLine(x1, y1, x2, y2, bgEdgePaint)
 
-                    bgEdgePaint.color = android.graphics.Color.rgb(220, 38, 38) // Blocked Red
+                    bgEdgePaint.color = android.graphics.Color.rgb(239, 68, 68)
                     bgEdgePaint.strokeWidth = 11f
                     bgEdgePaint.pathEffect = null
-                    canvas.drawLine(pt1.x.toFloat(), pt1.y.toFloat(), pt2.x.toFloat(), pt2.y.toFloat(), bgEdgePaint)
+                    canvas.drawLine(x1, y1, x2, y2, bgEdgePaint)
                 }
                 isWarningOrConstruction -> {
-                    // Draw white casing + bold amber construction line at exact location
-                    bgEdgePaint.color = android.graphics.Color.WHITE
-                    bgEdgePaint.strokeWidth = 15f
+                    // Glowing Amber Halo + Dashed Construction Line at exact location
+                    bgEdgePaint.color = if (isNightOrSat) {
+                        android.graphics.Color.argb(110, 245, 158, 11)
+                    } else {
+                        android.graphics.Color.WHITE
+                    }
+                    bgEdgePaint.strokeWidth = if (isNightOrSat) 20f else 15f
                     bgEdgePaint.pathEffect = null
-                    canvas.drawLine(pt1.x.toFloat(), pt1.y.toFloat(), pt2.x.toFloat(), pt2.y.toFloat(), bgEdgePaint)
+                    canvas.drawLine(x1, y1, x2, y2, bgEdgePaint)
 
-                    bgEdgePaint.color = android.graphics.Color.rgb(245, 158, 11) // Warning / Construction Amber
+                    bgEdgePaint.color = android.graphics.Color.rgb(245, 158, 11)
                     bgEdgePaint.strokeWidth = 10f
                     bgEdgePaint.pathEffect = DashPathEffect(floatArrayOf(20f, 10f), 0f)
-                    canvas.drawLine(pt1.x.toFloat(), pt1.y.toFloat(), pt2.x.toFloat(), pt2.y.toFloat(), bgEdgePaint)
+                    canvas.drawLine(x1, y1, x2, y2, bgEdgePaint)
                 }
                 edge.status == RoadStatusType.RESTRICTED -> {
-                    bgEdgePaint.color = android.graphics.Color.argb(160, 100, 116, 139)
+                    bgEdgePaint.color = if (isNightOrSat) {
+                        android.graphics.Color.argb(170, 148, 163, 184)
+                    } else {
+                        android.graphics.Color.argb(160, 100, 116, 139)
+                    }
                     bgEdgePaint.strokeWidth = 6f
                     bgEdgePaint.pathEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
-                    canvas.drawLine(pt1.x.toFloat(), pt1.y.toFloat(), pt2.x.toFloat(), pt2.y.toFloat(), bgEdgePaint)
+                    canvas.drawLine(x1, y1, x2, y2, bgEdgePaint)
                 }
                 else -> {
-                    // Subtle green background road link so the OpenStreetMap streets stay crystal clear
-                    bgEdgePaint.color = android.graphics.Color.argb(135, 16, 185, 129)
+                    bgEdgePaint.color = if (isNightOrSat) {
+                        android.graphics.Color.argb(130, 52, 211, 153)
+                    } else {
+                        android.graphics.Color.argb(135, 16, 185, 129)
+                    }
                     bgEdgePaint.strokeWidth = 5f
                     bgEdgePaint.pathEffect = null
-                    canvas.drawLine(pt1.x.toFloat(), pt1.y.toFloat(), pt2.x.toFloat(), pt2.y.toFloat(), bgEdgePaint)
+                    canvas.drawLine(x1, y1, x2, y2, bgEdgePaint)
                 }
             }
         }
@@ -651,6 +910,11 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         // 3. Draw Alternate Route (dashed line) if different from active Optimal Path
         val altPath = alternateRoute?.nodePath ?: emptyList()
         if (altPath.size >= 2 && altPath != primaryPath) {
+            routeAlternatePaint.color = if (isNightOrSat) {
+                android.graphics.Color.argb(190, 148, 163, 184)
+            } else {
+                android.graphics.Color.argb(170, 100, 116, 139)
+            }
             for (i in 0 until altPath.size - 1) {
                 val n1 = nodeMap[altPath[i]] ?: continue
                 val n2 = nodeMap[altPath[i + 1]] ?: continue
@@ -666,8 +930,24 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
             }
         }
 
-        // 4. Draw Primary Active OPTIMAL PATH (Bold White Casing + Vibrant Optimal Route Line + Directional Arrows)
+        // 4. Draw Primary Active OPTIMAL PATH (Glowing Halo in Dark/Sat Mode + High-Contrast Casing + Vibrant Optimal Route Line + Directional Arrows)
         if (primaryPath.size >= 2) {
+            routeGlowPaint.color = if (isNightOrSat) {
+                android.graphics.Color.argb(95, 56, 189, 248) // Glowing Cyan-Blue Halo in Dark/Satellite mode
+            } else {
+                android.graphics.Color.argb(55, 37, 99, 235)
+            }
+            routeCasingPaint.color = if (isNightOrSat) {
+                android.graphics.Color.rgb(15, 23, 42)
+            } else {
+                android.graphics.Color.WHITE
+            }
+            routePrimaryPaint.color = if (isNightOrSat) {
+                android.graphics.Color.rgb(56, 189, 248) // Bright Electric Sky-Blue for Dark/Satellite clarity
+            } else {
+                android.graphics.Color.rgb(37, 99, 235)
+            }
+
             for (i in 0 until primaryPath.size - 1) {
                 val uId = primaryPath[i]
                 val vId = primaryPath[i + 1]
@@ -681,7 +961,6 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                 val x2 = pt2.x.toFloat()
                 val y2 = pt2.y.toFloat()
 
-                // Check if this specific segment on the Optimal Path has a Hazard, Bridge, or Road Construction
                 val segmentEdge = edges.find {
                     (it.fromNodeId == uId && it.toNodeId == vId) || (it.fromNodeId == vId && it.toNodeId == uId)
                 }
@@ -698,17 +977,16 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                         activeHazards.any { it.edgeId == segmentEdge.id }
                     )
 
-                // White outer casing for the Optimal Path
+                canvas.drawLine(x1, y1, x2, y2, routeGlowPaint)
                 canvas.drawLine(x1, y1, x2, y2, routeCasingPaint)
 
-                // Colored inner line (Red if Critical Hazard on Optimal Path, Amber if Construction on Optimal Path, Royal Blue if Safe Optimal Path)
                 when {
                     segBlocked -> {
-                        routeHazardSegmentPaint.color = android.graphics.Color.rgb(220, 38, 38)
+                        routeHazardSegmentPaint.color = android.graphics.Color.rgb(239, 68, 68)
                         canvas.drawLine(x1, y1, x2, y2, routeHazardSegmentPaint)
                     }
                     segWarning -> {
-                        routeHazardSegmentPaint.color = android.graphics.Color.rgb(217, 119, 6)
+                        routeHazardSegmentPaint.color = android.graphics.Color.rgb(245, 158, 11)
                         canvas.drawLine(x1, y1, x2, y2, routeHazardSegmentPaint)
                     }
                     else -> {
@@ -716,7 +994,6 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                     }
                 }
 
-                // Draw directional chevron arrow at segment midpoint showing Optimal Path flow
                 val midX = (x1 + x2) / 2f
                 val midY = (y1 + y2) / 2f
                 val angle = atan2((y2 - y1).toDouble(), (x2 - x1).toDouble())
@@ -741,23 +1018,25 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
             }
 
             nodeFillPaint.color = when {
-                isSource -> android.graphics.Color.rgb(16, 185, 129) // Green Source
-                isDest -> android.graphics.Color.rgb(220, 38, 38) // Red Destination
-                isInRoute -> android.graphics.Color.rgb(37, 99, 235) // Blue Optimal Path Node
-                else -> android.graphics.Color.argb(220, 255, 255, 255)
+                isSource -> android.graphics.Color.rgb(16, 185, 129)
+                isDest -> android.graphics.Color.rgb(239, 68, 68)
+                isInRoute -> android.graphics.Color.rgb(37, 99, 235)
+                isNightOrSat -> android.graphics.Color.rgb(15, 23, 42)
+                else -> android.graphics.Color.argb(230, 255, 255, 255)
             }
             nodeBorderPaint.color = when {
                 isSource || isDest || isInRoute -> android.graphics.Color.WHITE
+                isNightOrSat -> android.graphics.Color.rgb(148, 163, 184)
                 else -> android.graphics.Color.rgb(100, 116, 139)
             }
 
             canvas.drawCircle(cx, cy, radius, nodeFillPaint)
             canvas.drawCircle(cx, cy, radius, nodeBorderPaint)
 
-            nodeTextPaint.color = if (isSource || isDest || isInRoute) {
-                android.graphics.Color.WHITE
-            } else {
-                android.graphics.Color.rgb(30, 41, 59)
+            nodeTextPaint.color = when {
+                isSource || isDest || isInRoute -> android.graphics.Color.WHITE
+                isNightOrSat -> android.graphics.Color.rgb(241, 245, 249)
+                else -> android.graphics.Color.rgb(30, 41, 59)
             }
             nodeTextPaint.textSize = when {
                 isSource || isDest -> 22f
@@ -779,7 +1058,12 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                     title = "START: ${startNode.id} (Source)",
                     subtitle = startNode.name.substringAfter("- ").trim(),
                     borderColor = android.graphics.Color.rgb(16, 185, 129),
-                    titleColor = android.graphics.Color.rgb(6, 95, 70),
+                    titleColor = if (isNightOrSat) {
+                        android.graphics.Color.rgb(110, 231, 183)
+                    } else {
+                        android.graphics.Color.rgb(6, 95, 70)
+                    },
+                    isDarkCallout = isNightOrSat,
                     placeAbove = true,
                     verticalOffset = 30f
                 )
@@ -795,8 +1079,13 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                     anchorY = pt1.y.toFloat(),
                     title = "DEST: ${endNode.id} (Goal)",
                     subtitle = endNode.name.substringAfter("- ").trim(),
-                    borderColor = android.graphics.Color.rgb(220, 38, 38),
-                    titleColor = android.graphics.Color.rgb(153, 27, 27),
+                    borderColor = android.graphics.Color.rgb(239, 68, 68),
+                    titleColor = if (isNightOrSat) {
+                        android.graphics.Color.rgb(252, 165, 165)
+                    } else {
+                        android.graphics.Color.rgb(153, 27, 27)
+                    },
+                    isDarkCallout = isNightOrSat,
                     placeAbove = false,
                     verticalOffset = 30f
                 )
@@ -823,9 +1112,6 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                 edge.severity == HazardSeverity.WARNING ||
                 matchingHazard != null
 
-            // Show indicator at exact location if:
-            // (a) It is any Bridge or Construction or Hazard on the active Optimal Path, OR
-            // (b) It is an active Critical/Warning Hazard or Bridge B1 (B-C) or Road Construction (H-I)
             val shouldIndicateAtLocation = (isOnOptimalPath && (isBridgeEdge || isConstructionEdge || isCriticalOrBlocked || isWarningHazard)) ||
                 isCriticalOrBlocked ||
                 isConstructionEdge ||
@@ -840,10 +1126,9 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
 
                 when {
                     isCriticalOrBlocked -> {
-                        // Pulsing Red Hazard Beacon at exact GPS midpoint of Bridge/Road
-                        hazardPulsePaint.color = android.graphics.Color.argb(85, 239, 68, 68)
-                        canvas.drawCircle(mx, my, 34f, hazardPulsePaint)
-                        nodeFillPaint.color = android.graphics.Color.rgb(220, 38, 38)
+                        hazardPulsePaint.color = android.graphics.Color.argb(105, 239, 68, 68)
+                        canvas.drawCircle(mx, my, 36f, hazardPulsePaint)
+                        nodeFillPaint.color = android.graphics.Color.rgb(239, 68, 68)
                         nodeBorderPaint.color = android.graphics.Color.WHITE
                         canvas.drawCircle(mx, my, 15f, nodeFillPaint)
                         canvas.drawCircle(mx, my, 15f, nodeBorderPaint)
@@ -856,16 +1141,20 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                             anchorY = my,
                             title = titleText,
                             subtitle = "CRITICAL • $pathTag",
-                            borderColor = android.graphics.Color.rgb(220, 38, 38),
-                            titleColor = android.graphics.Color.rgb(185, 28, 28),
+                            borderColor = android.graphics.Color.rgb(239, 68, 68),
+                            titleColor = if (isNightOrSat) {
+                                android.graphics.Color.rgb(252, 165, 165)
+                            } else {
+                                android.graphics.Color.rgb(185, 28, 28)
+                            },
+                            isDarkCallout = isNightOrSat,
                             placeAbove = true,
                             verticalOffset = 20f
                         )
                     }
                     isConstructionEdge || isWarningHazard -> {
-                        // Pulsing Amber Construction Beacon at exact GPS midpoint of Road H-I
-                        hazardPulsePaint.color = android.graphics.Color.argb(85, 245, 158, 11)
-                        canvas.drawCircle(mx, my, 32f, hazardPulsePaint)
+                        hazardPulsePaint.color = android.graphics.Color.argb(105, 245, 158, 11)
+                        canvas.drawCircle(mx, my, 34f, hazardPulsePaint)
                         nodeFillPaint.color = android.graphics.Color.rgb(245, 158, 11)
                         nodeBorderPaint.color = android.graphics.Color.WHITE
                         canvas.drawCircle(mx, my, 14f, nodeFillPaint)
@@ -880,19 +1169,23 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                             title = titleText,
                             subtitle = "WARNING • $pathTag",
                             borderColor = android.graphics.Color.rgb(245, 158, 11),
-                            titleColor = android.graphics.Color.rgb(180, 83, 9),
+                            titleColor = if (isNightOrSat) {
+                                android.graphics.Color.rgb(253, 224, 71)
+                            } else {
+                                android.graphics.Color.rgb(180, 83, 9)
+                            },
+                            isDarkCallout = isNightOrSat,
                             placeAbove = false,
                             verticalOffset = 20f
                         )
                     }
                     isBridgeEdge && isOnOptimalPath -> {
-                        // Safe Bridge directly on the chosen Optimal Path (e.g., H-P South Bridge Approach)
-                        hazardPulsePaint.color = android.graphics.Color.argb(65, 37, 99, 235)
-                        canvas.drawCircle(mx, my, 26f, hazardPulsePaint)
-                        nodeFillPaint.color = android.graphics.Color.rgb(37, 99, 235)
+                        hazardPulsePaint.color = android.graphics.Color.argb(80, 56, 189, 248)
+                        canvas.drawCircle(mx, my, 28f, hazardPulsePaint)
+                        nodeFillPaint.color = android.graphics.Color.rgb(14, 165, 233)
                         nodeBorderPaint.color = android.graphics.Color.WHITE
-                        canvas.drawCircle(mx, my, 12f, nodeFillPaint)
-                        canvas.drawCircle(mx, my, 12f, nodeBorderPaint)
+                        canvas.drawCircle(mx, my, 13f, nodeFillPaint)
+                        canvas.drawCircle(mx, my, 13f, nodeBorderPaint)
 
                         drawLocationCallout(
                             canvas = canvas,
@@ -900,8 +1193,13 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
                             anchorY = my,
                             title = "🌉 ${edge.roadName} (${edge.id})",
                             subtitle = "SAFE BRIDGE ON OPTIMAL PATH",
-                            borderColor = android.graphics.Color.rgb(37, 99, 235),
-                            titleColor = android.graphics.Color.rgb(30, 64, 175),
+                            borderColor = android.graphics.Color.rgb(56, 189, 248),
+                            titleColor = if (isNightOrSat) {
+                                android.graphics.Color.rgb(125, 211, 252)
+                            } else {
+                                android.graphics.Color.rgb(30, 64, 175)
+                            },
+                            isDarkCallout = isNightOrSat,
                             placeAbove = false,
                             verticalOffset = 18f
                         )
@@ -917,6 +1215,16 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
             projection.toPixels(GeoPoint(gpsLat, gpsLon), pt1)
             val gx = pt1.x.toFloat()
             val gy = pt1.y.toFloat()
+            gpsHaloPaint.color = if (isNightOrSat) {
+                android.graphics.Color.argb(85, 56, 189, 248)
+            } else {
+                android.graphics.Color.argb(60, 37, 99, 235)
+            }
+            gpsDotPaint.color = if (isNightOrSat) {
+                android.graphics.Color.rgb(56, 189, 248)
+            } else {
+                android.graphics.Color.rgb(37, 99, 235)
+            }
             canvas.drawCircle(gx, gy, 34f, gpsHaloPaint)
             canvas.drawCircle(gx, gy, 12f, gpsDotPaint)
             nodeBorderPaint.color = android.graphics.Color.WHITE
@@ -953,6 +1261,7 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         subtitle: String,
         borderColor: Int,
         titleColor: Int,
+        isDarkCallout: Boolean,
         placeAbove: Boolean,
         verticalOffset: Float
     ) {
@@ -968,7 +1277,6 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         val top = if (placeAbove) anchorY - verticalOffset - boxHeight else anchorY + verticalOffset
         val bottom = top + boxHeight
 
-        // Draw pointer triangle connecting the callout box to the exact GeoPoint coordinate
         val pointerPath = Path()
         if (placeAbove) {
             pointerPath.moveTo(anchorX - 9f, bottom)
@@ -981,6 +1289,11 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         }
         pointerPath.close()
 
+        calloutBgPaint.color = if (isDarkCallout) {
+            android.graphics.Color.argb(242, 11, 19, 36) // Deep Slate Night Glass
+        } else {
+            android.graphics.Color.argb(248, 255, 255, 255)
+        }
         calloutBorderPaint.color = borderColor
         canvas.drawPath(pointerPath, calloutBgPaint)
 
@@ -991,7 +1304,11 @@ private class RoutPilotOsmGeoOverlay : Overlay() {
         calloutTitlePaint.color = titleColor
         canvas.drawText(title, anchorX, top + 20f, calloutTitlePaint)
 
-        calloutSubPaint.color = android.graphics.Color.rgb(71, 85, 105)
+        calloutSubPaint.color = if (isDarkCallout) {
+            android.graphics.Color.rgb(226, 232, 240)
+        } else {
+            android.graphics.Color.rgb(71, 85, 105)
+        }
         canvas.drawText(subtitle, anchorX, top + 38f, calloutSubPaint)
     }
 

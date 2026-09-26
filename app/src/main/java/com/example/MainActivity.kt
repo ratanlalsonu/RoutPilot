@@ -220,7 +220,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
             ModalDrawerSheet(modifier = Modifier.fillMaxWidth(0.78f)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "RoutPilot",
+                        text = "RoutePilot",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = RpPrimaryBlue
@@ -256,7 +256,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
         }
     ) {
         val screenTitle = when (currentScreen) {
-            AppScreen.HOME -> "RoutPilot"
+            AppScreen.HOME -> "RoutePilot"
             AppScreen.LIVE_MAP -> "Live Map"
             AppScreen.ROUTE_PLANNER -> "Route Planner"
             AppScreen.SENSORS -> "Sensor Monitoring"
@@ -268,7 +268,7 @@ fun RoutPilotRootApp(viewModel: RoutPilotViewModel) {
             AppScreen.HISTORY -> "History"
             AppScreen.CONNECTIVITY -> "Connectivity & System"
             AppScreen.DATA_SOURCES -> "Data Sources & MATLAB"
-            AppScreen.SPLASH -> "RoutPilot"
+            AppScreen.SPLASH -> "RoutePilot"
         }
 
         Scaffold(

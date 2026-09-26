@@ -131,7 +131,7 @@ fun RoutPilotTopBar(
                                 fontWeight = FontWeight.ExtraBold
                             )
                         ) {
-                            append("Rout")
+                            append("Route")
                         }
                         withStyle(
                             SpanStyle(

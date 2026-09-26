@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">RoutPilot</string>
+    <string name="app_name">RoutePilot</string>
     <string name="app_subtitle">Real-Time Road &amp; Bridge Hazard Detection with Intelligent Route Diversion</string>
     <string name="mode_external_hardware">EXTERNAL HARDWARE</string>
     <string name="mode_virtual">VIRTUAL MODE</string>

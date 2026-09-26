@@ -1,5 +1,5 @@
 {
-  "name": "RoutPilot",
+  "name": "RoutePilot",
   "description": "Real-Time Road & Bridge Hazard Detection with Intelligent Route Diversion System",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

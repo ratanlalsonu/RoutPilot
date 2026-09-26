@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "RoutPilot"
+rootProject.name = "RoutePilot"
 
 include(":app")
