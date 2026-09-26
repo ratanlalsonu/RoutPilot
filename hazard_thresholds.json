@@ -1,0 +1,54 @@
+{
+  "version": "2026.1",
+  "description": "Centralized RoutPilot Hazard Detection & Road Status Threshold Configuration",
+  "vibration": {
+    "unit": "g",
+    "normalRange": [0.0, 0.35],
+    "warning": 0.35,
+    "critical": 0.65,
+    "blocked": 0.80,
+    "validMin": 0.0,
+    "validMax": 10.0
+  },
+  "tilt": {
+    "unit": "deg",
+    "normalRange": [0.0, 1.8],
+    "warning": 1.8,
+    "critical": 3.2,
+    "blocked": 4.0,
+    "validMin": -45.0,
+    "validMax": 45.0
+  },
+  "strain": {
+    "unit": "uE",
+    "normalRange": [0.0, 180.0],
+    "warning": 180.0,
+    "critical": 260.0,
+    "blocked": 300.0,
+    "validMin": 0.0,
+    "validMax": 2500.0
+  },
+  "displacement": {
+    "unit": "mm",
+    "normalRange": [0.0, 4.5],
+    "warning": 4.5,
+    "critical": 7.5,
+    "blocked": 9.0,
+    "validMin": 0.0,
+    "validMax": 200.0
+  },
+  "waterLevel": {
+    "unit": "cm",
+    "normalRange": [0.0, 20.0],
+    "warning": 20.0,
+    "critical": 35.0,
+    "blocked": 45.0,
+    "validMin": 0.0,
+    "validMax": 500.0
+  },
+  "staleTimeoutSeconds": 15,
+  "combinedHazardRule": {
+    "minWarningSensorsForCritical": 2,
+    "minCriticalSensorsForBlocked": 2
+  }
+}

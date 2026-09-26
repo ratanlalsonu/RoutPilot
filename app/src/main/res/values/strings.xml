@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">RoutPilot</string>
+    <string name="app_subtitle">Real-Time Road &amp; Bridge Hazard Detection with Intelligent Route Diversion</string>
+    <string name="mode_external_hardware">EXTERNAL HARDWARE</string>
+    <string name="mode_virtual">VIRTUAL MODE</string>
+    <string name="label_live_sensor_data">LIVE SENSOR DATA</string>
+    <string name="label_no_live_sensor_data">NO LIVE SENSOR DATA</string>
+    <string name="label_test_data_not_live">TEST DATA — NOT LIVE</string>
+    <string name="msg_connect_esp32">Connect ESP32 hardware to receive live sensor readings.</string>
+    <string name="btn_get_started">Get Started</string>
+    <string name="btn_skip">Skip</string>
+    <string name="btn_calculate_route">Calculate Route</string>
+    <string name="btn_view_on_map">View on Map</string>
+    <string name="btn_run_scenario">Run Scenario</string>
+    <string name="btn_save_settings">Save Settings</string>
+</resources>
